@@ -38,6 +38,7 @@ func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd,
 	if sl.Count() > 0 {
 		logger.Infof("agent", "loaded %d skills from %s: %v", sl.Count(), skillsDir, sl.Names())
 	}
+	sl.StartWatcher()
 
 	return &Agent{
 		profile:      p,
@@ -54,8 +55,8 @@ func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd,
 // Run executes the agent loop for a single prompt.
 func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string, error) {
 	messages := make([]llm.Message, 0, len(history)+2)
-	if a.profile.Agent.SystemPrompt != "" {
-		sysPrompt := a.profile.Agent.SystemPrompt + a.skillsLoader.Metadata()
+	sysPrompt := a.profile.Agent.SystemPrompt + a.skillsLoader.Metadata()
+	if sysPrompt != "" {
 		messages = append(messages, llm.Message{Role: "system", Content: sysPrompt})
 	}
 	messages = append(messages, history...)
