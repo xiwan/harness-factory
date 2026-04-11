@@ -123,18 +123,19 @@ func (t *Transport) SendToolCall(sessionID, toolCallID, title string) error {
 
 // SendToolCallUpdate sends a tool_call_update notification (completed/error).
 func (t *Transport) SendToolCallUpdate(sessionID, toolCallID, title, status, output string) error {
+	update := map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    toolCallID,
+		"title":         title,
+		"status":        status,
+		"content":       map[string]string{"text": output},
+	}
+	if status == "error" {
+		update["error"] = output
+	}
 	return t.write(&Notification{
 		JSONRPC: "2.0",
 		Method:  "session/update",
-		Params: sessionUpdateParams{
-			SessionID: sessionID,
-			Update: map[string]any{
-				"sessionUpdate": "tool_call_update",
-				"toolCallId":    toolCallID,
-				"title":         title,
-				"status":        status,
-				"content":       map[string]string{"text": output},
-			},
-		},
+		Params:  sessionUpdateParams{SessionID: sessionID, Update: update},
 	})
 }
