@@ -28,6 +28,78 @@ type AgentConfig struct {
 	Temperature  float64 `json:"temperature"`
 }
 
+// Built-in profile templates.
+var BuiltinProfiles = map[string]Profile{
+	"default": {
+		Tools: map[string]ToolConfig{
+			"fs":    {Permissions: []string{"read", "list", "search"}},
+			"git":   {Permissions: []string{"status", "diff", "log"}},
+			"shell": {Allowlist: []string{"echo", "date", "pwd", "ls", "cat", "grep", "find", "wc", "head", "tail"}},
+		},
+		Orchestration: "free",
+		Resources:     Resources{Timeout: "300s", MaxTurns: 20, LogLevel: "info"},
+		Agent: AgentConfig{
+			SystemPrompt: "You are a helpful assistant. You can read files, check git status, and run basic commands. You cannot modify files or push changes. Be concise.",
+			Temperature:  0.3,
+		},
+	},
+	"pr-reviewer": {
+		Tools: map[string]ToolConfig{
+			"fs":    {Permissions: []string{"read", "list"}},
+			"git":   {Permissions: []string{"diff", "log", "show"}},
+			"shell": {Allowlist: []string{"pytest", "mypy", "grep", "find"}},
+		},
+		Orchestration: "free",
+		Resources:     Resources{Timeout: "300s", MaxTurns: 20, LogLevel: "info"},
+		Agent: AgentConfig{
+			SystemPrompt: "You are a code reviewer. Analyze diffs, read relevant files, run linters if needed. Produce a structured review: summary, issues, suggestions. Do not modify files.",
+			Temperature:  0.3,
+		},
+	},
+	"devops": {
+		Tools: map[string]ToolConfig{
+			"fs":    {Permissions: []string{"all"}},
+			"git":   {Permissions: []string{"all"}},
+			"shell": {Allowlist: []string{"docker", "kubectl", "terraform", "make", "grep", "find", "cat", "ls"}},
+			"web":   {Permissions: []string{"fetch"}},
+		},
+		Orchestration: "free",
+		Resources:     Resources{Timeout: "600s", MaxTurns: 50, LogLevel: "info"},
+		Agent: AgentConfig{
+			SystemPrompt: "You are a DevOps engineer with full access to filesystem, git, shell, and web. Execute infrastructure tasks, deploy, and troubleshoot. Confirm destructive operations before executing.",
+			Temperature:  0.3,
+		},
+	},
+	"research": {
+		Tools: map[string]ToolConfig{
+			"fs":  {Permissions: []string{"read", "list", "search"}},
+			"web": {Permissions: []string{"fetch"}},
+		},
+		Orchestration: "free",
+		Resources:     Resources{Timeout: "300s", MaxTurns: 20, LogLevel: "info"},
+		Agent: AgentConfig{
+			SystemPrompt: "You are a research assistant. Read files, search codebases, and fetch web content. Summarize findings clearly. You cannot modify files or run commands.",
+			Temperature:  0.3,
+		},
+	},
+}
+
+// GetBuiltin returns a built-in profile by name, or the default profile if not found.
+func GetBuiltin(name string) Profile {
+	if p, ok := BuiltinProfiles[name]; ok {
+		return p
+	}
+	return BuiltinProfiles["default"]
+}
+
+// BuiltinNames returns all available built-in profile names.
+func BuiltinNames() []string {
+	names := make([]string, 0, len(BuiltinProfiles))
+	for k := range BuiltinProfiles {
+		names = append(names, k)
+	}
+	return names
+}
 // HasTool returns true if the profile activates the given tool.
 func (p *Profile) HasTool(name string) bool {
 	_, ok := p.Tools[name]

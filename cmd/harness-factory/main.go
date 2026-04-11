@@ -15,12 +15,24 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(version)
 		os.Exit(0)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--profiles" {
+		fmt.Println("Built-in profiles:", strings.Join(profile.BuiltinNames(), ", "))
+		os.Exit(0)
+	}
+
+	// Parse --profile flag
+	var profileName string
+	for i, arg := range os.Args[1:] {
+		if arg == "--profile" && i+1 < len(os.Args)-1 {
+			profileName = os.Args[i+2]
+		}
 	}
 
 	logger.Init()
@@ -69,13 +81,34 @@ func main() {
 				transport.SendError(req.ID, -32602, "invalid params: "+err.Error())
 				continue
 			}
+			// Resolve profile: explicit > --profile flag > default
+			p := params.Profile
+			if len(p.Tools) == 0 {
+				if profileName != "" {
+					p = profile.GetBuiltin(profileName)
+					logger.Infof("main", "using --profile %s", profileName)
+				} else {
+					p = profile.GetBuiltin("default")
+					logger.Info("main", "no profile provided, using default")
+				}
+				// Preserve litellm config from params if set
+				if params.Profile.LiteLLMURL != "" {
+					p.LiteLLMURL = params.Profile.LiteLLMURL
+				}
+				if params.Profile.LiteLLMAPIKey != "" {
+					p.LiteLLMAPIKey = params.Profile.LiteLLMAPIKey
+				}
+				if params.Profile.Agent.Model != "" {
+					p.Agent.Model = params.Profile.Agent.Model
+				}
+			}
 			sessionID = fmt.Sprintf("sess_%d", os.Getpid())
 			history = nil
-			currentAgent = agent.New(&params.Profile, registry, transport, params.CWD, sessionID)
-			if params.Profile.Resources.LogLevel != "" {
-				logger.SetLevel(params.Profile.Resources.LogLevel)
+			currentAgent = agent.New(&p, registry, transport, params.CWD, sessionID)
+			if p.Resources.LogLevel != "" {
+				logger.SetLevel(p.Resources.LogLevel)
 			}
-			logger.Infof("main", "session/new id=%s cwd=%s tools=%v", sessionID, params.CWD, toolNames(params.Profile))
+			logger.Infof("main", "session/new id=%s cwd=%s tools=%v", sessionID, params.CWD, toolNames(p))
 			transport.SendResult(req.ID, map[string]string{"sessionId": sessionID})
 
 		case "session/prompt":
