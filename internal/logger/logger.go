@@ -18,7 +18,11 @@ const (
 var level = LevelInfo
 
 func Init() {
-	switch strings.ToLower(os.Getenv("HARNESS_LOG_LEVEL")) {
+	setFromEnv()
+}
+
+func SetLevel(lvl string) {
+	switch strings.ToLower(lvl) {
 	case "debug":
 		level = LevelDebug
 	case "error":
@@ -26,6 +30,10 @@ func Init() {
 	default:
 		level = LevelInfo
 	}
+}
+
+func setFromEnv() {
+	SetLevel(os.Getenv("HARNESS_LOG_LEVEL"))
 }
 
 func log(lvl int, tag, msg string) {

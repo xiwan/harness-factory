@@ -14,7 +14,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.2.3"
+var version = "0.2.4"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -70,6 +70,9 @@ func main() {
 			sessionID = fmt.Sprintf("sess_%d", os.Getpid())
 			history = nil
 			currentAgent = agent.New(&params.Profile, registry, transport, params.CWD, sessionID)
+			if params.Profile.Resources.LogLevel != "" {
+				logger.SetLevel(params.Profile.Resources.LogLevel)
+			}
 			logger.Infof("main", "session/new id=%s cwd=%s tools=%v", sessionID, params.CWD, toolNames(params.Profile))
 			transport.SendResult(req.ID, map[string]string{"sessionId": sessionID})
 
