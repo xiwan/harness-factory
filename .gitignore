@@ -1,0 +1,18 @@
+# Build
+/harness-factory
+*.exe
+
+# Docs (local spec, not committed)
+docs/
+
+# Scratch
+test/scratch/
+
+# AIDLC
+OPERATIONS.md
+versions/
+
+# IDE
+.idea/
+.vscode/
+*.swp
