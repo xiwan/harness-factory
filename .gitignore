@@ -2,6 +2,9 @@
 /harness-factory
 *.exe
 
+# Env
+.env
+
 # Docs (local spec, not committed)
 docs/
 
