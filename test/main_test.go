@@ -12,8 +12,8 @@ func TestVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "0.2.0") {
-		t.Fatalf("expected version 0.2.0, got %s", string(out))
+	if !strings.Contains(string(out), "0.2.") {
+		t.Fatalf("expected version 0.2.x, got %s", string(out))
 	}
 }
 

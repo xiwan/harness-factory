@@ -1,0 +1,242 @@
+# harness-factory — Agent Execution Guide
+
+> You are the executing agent. Human docs → [README.md](README.md)
+
+harness-factory is a lightweight ACP agent binary. Bridge forks it, passes a profile, it runs an agent loop.
+
+```
+acp-bridge (HTTP)
+    ↕ fork + stdin/stdout (ACP JSON-RPC)
+harness-factory (Go binary, ~8MB)
+    ↕ LiteLLM (OpenAI-compatible)
+LLM provider (Bedrock/OpenAI/...)
+```
+
+---
+
+## Phase 1: Diagnose (🤖 auto)
+
+```bash
+echo "=== Runtime ==="
+go version 2>&1 || echo "GO_NOT_FOUND"
+
+echo "=== Binary ==="
+[ -f ./harness-factory ] && echo "BINARY_EXISTS ($(./harness-factory --version))" || echo "BINARY_NOT_FOUND"
+
+echo "=== Source ==="
+[ -f cmd/harness-factory/main.go ] && echo "SOURCE_EXISTS" || echo "SOURCE_NOT_FOUND"
+[ -f go.mod ] && echo "GOMOD_EXISTS" || echo "GOMOD_NOT_FOUND"
+
+echo "=== Config ==="
+[ -f .env ] && echo "ENV_EXISTS" || echo "ENV_NOT_FOUND"
+
+echo "=== Env Vars ==="
+[ -n "$LITELLM_API_KEY" ] && echo "LITELLM_API_KEY=set" || echo "LITELLM_API_KEY=NOT_SET"
+
+echo "=== LiteLLM ==="
+curl -s --max-time 3 http://localhost:4000/health 2>/dev/null && echo "LITELLM_OK" || echo "LITELLM_NOT_RUNNING"
+
+echo "=== Tests ==="
+[ -f test/test_agent_compliance.sh ] && echo "TEST_SCRIPT_EXISTS" || echo "TEST_SCRIPT_NOT_FOUND"
+```
+
+### Decision Tree
+
+```
+Binary exists + tests pass?
+└─ YES → Skip to Phase 5 (verify only)
+└─ NO → Source exists?
+    └─ YES → Build (Phase 3, step 3.2 only)
+    └─ NO → Full setup (Phase 3 all steps)
+```
+
+---
+
+## Phase 2: Collect Human Input (👤 ask once)
+
+| What | Ask If | Example |
+|---|---|---|
+| `LITELLM_API_KEY` | `NOT_SET` | `sk-litellm-bedrock` |
+| LiteLLM URL | Not default | `http://localhost:4000` |
+| Model name | Custom model | `bedrock/anthropic.claude-sonnet-4-6` |
+
+---
+
+## Phase 3: Build & Configure (🤖 auto)
+
+| Step | Action | Skip If |
+|---|---|---|
+| 3.1 | Install Go ≥1.21 | `go version` found |
+| 3.2 | Build binary | `BINARY_EXISTS` |
+| 3.3 | Create `.env` from `.env.example` | `ENV_EXISTS` |
+
+### 3.2 Build
+
+```bash
+go build -o harness-factory ./cmd/harness-factory
+./harness-factory --version
+```
+
+### 3.3 Environment
+
+```bash
+cp .env.example .env
+# Edit .env with actual tokens
+```
+
+---
+
+## Phase 4: Integration with acp-bridge (🤖 auto)
+
+Add harness agent to acp-bridge `config.yaml`:
+
+```yaml
+agents:
+  pr-reviewer:
+    enabled: true
+    mode: "harness"
+    command: "/path/to/harness-factory"
+    working_dir: "/tmp"
+    description: "Code review agent — read-only, runs linters"
+    profile:
+      tools:
+        fs: { permissions: [read, list] }
+        git: { permissions: [diff, log, show] }
+        shell: { allowlist: [pytest, mypy, grep] }
+      orchestration: free
+      resources:
+        timeout: 300s
+        max_turns: 20
+      agent:
+        model: "bedrock/anthropic.claude-sonnet-4-6"
+        system_prompt: |
+          You are a code reviewer. Analyze the diff, read relevant files,
+          run linters if needed, and produce a structured review report.
+        temperature: 0.3
+```
+
+Bridge injects `litellm_url` and `litellm_api_key` automatically.
+
+---
+
+## Phase 5: Verify (🤖 auto)
+
+### 5.1 Protocol Compliance
+
+```bash
+bash test/test_agent_compliance.sh ./harness-factory
+```
+
+Expected: 6/6 protocol tests pass (no LiteLLM needed).
+
+### 5.2 End-to-End (needs LiteLLM + .env)
+
+```bash
+# Source env and run full suite
+bash test/test_agent_compliance.sh ./harness-factory
+```
+
+Expected: 10/10 all tests pass.
+
+### 5.3 Manual stdin Test
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./harness-factory
+```
+
+Expected:
+```json
+{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"harness-factory","version":"0.2.1"},"capabilities":{}}}
+```
+
+---
+
+## ACP Protocol Reference
+
+### Methods
+
+| Method | Direction | Purpose |
+|---|---|---|
+| `initialize` | → harness | Returns agentInfo + capabilities |
+| `ping` | → harness | Health check, returns `"pong"` |
+| `session/new` | → harness | Create session with profile, returns sessionId |
+| `session/prompt` | → harness | Run agent loop for a prompt |
+| `session/update` | ← harness | Notification: tool.start, tool.done, text |
+
+### session/new Params
+
+```json
+{
+  "cwd": "/workspace/project",
+  "profile": {
+    "tools": {
+      "fs": { "permissions": ["read", "write", "list", "search"] },
+      "git": { "permissions": ["status", "diff", "log", "show", "commit", "push"] },
+      "shell": { "allowlist": ["pytest", "grep"] },
+      "web": { "permissions": ["fetch"] }
+    },
+    "orchestration": "free",
+    "resources": { "timeout": "300s", "max_turns": 20 },
+    "agent": {
+      "model": "bedrock/anthropic.claude-sonnet-4-6",
+      "system_prompt": "You are a ...",
+      "temperature": 0.3
+    },
+    "litellm_url": "http://localhost:4000",
+    "litellm_api_key": "sk-..."
+  }
+}
+```
+
+### session/update Notifications
+
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","kind":"tool.start","data":{"toolCallId":"...","name":"fs_read"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","kind":"tool.done","data":{"toolCallId":"...","name":"fs_read","status":"success","output":"..."}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","kind":"text","data":{"content":"Final response text"}}}
+```
+
+### Tool Names (as exposed to LLM)
+
+| Tool | Operations | Permission Granularity |
+|---|---|---|
+| `fs_read` `fs_write` `fs_list` `fs_search` | File system | Per-operation: `[read]` / `[read, write]` / `[all]` |
+| `git_status` `git_diff` `git_log` `git_show` `git_commit` `git_push` | Git | Per-operation: `[diff, log]` / `[all]` |
+| `shell_exec` | Shell command | By command: `allowlist: [pytest]` or `blocklist: [rm]` |
+| `web_fetch` | HTTP fetch | Per-operation: `[fetch]` / `[all]` |
+
+### Permission Model
+
+Two layers:
+1. **Exposure** — Only activated tools appear in LLM tool definitions
+2. **Enforcement** — Permission checker blocks unauthorized calls at runtime
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `cmd/harness-factory/main.go` | Entry point, ACP JSON-RPC loop |
+| `internal/acp/acp.go` | stdin/stdout JSON-RPC transport |
+| `internal/profile/profile.go` | Profile struct + permission queries |
+| `internal/permission/permission.go` | Runtime permission checker |
+| `internal/tools/registry.go` | Tool registry + activation filter |
+| `internal/tools/fs.go` | File system operations |
+| `internal/tools/git.go` | Git operations |
+| `internal/tools/shell.go` | Shell exec with allowlist |
+| `internal/tools/web.go` | HTTP fetch |
+| `internal/llm/llm.go` | LiteLLM HTTP client |
+| `internal/agent/agent.go` | Agent loop (LLM ↔ tool-use) |
+| `test/test_agent_compliance.sh` | Compliance + e2e test suite |
+| `.env.example` | Environment template |
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `llm HTTP 400: Invalid model name` | Check model name matches LiteLLM config (`curl /v1/models`) |
+| `llm request failed: connection refused` | LiteLLM not running at `litellm_url` |
+| `no active session` | Must call `session/new` before `session/prompt` |
+| `tool "X" not activated in profile` | Add tool to profile's `tools` section |
+| `fs.write not permitted` | Add `write` to `fs.permissions` in profile |
+| `shell command "X" not in allowlist` | Add command to `shell.allowlist` in profile |
+| Binary too large | `go build -ldflags="-s -w"` strips debug info (~5MB) |
