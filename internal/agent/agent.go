@@ -6,6 +6,7 @@ import (
 
 	"github.com/xiwan/harness-factory/internal/acp"
 	"github.com/xiwan/harness-factory/internal/llm"
+	"github.com/xiwan/harness-factory/internal/logger"
 	"github.com/xiwan/harness-factory/internal/permission"
 	"github.com/xiwan/harness-factory/internal/profile"
 	"github.com/xiwan/harness-factory/internal/tools"
@@ -53,6 +54,7 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 	for turn := 0; turn < maxTurns; turn++ {
 		// Call LLM
+		logger.Debugf("agent", "turn %d/%d calling LLM", turn+1, maxTurns)
 		req := &llm.ChatRequest{
 			Model:       a.profile.Agent.Model,
 			Messages:    messages,
@@ -75,6 +77,7 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 		// No tool calls → done
 		if len(choice.Message.ToolCalls) == 0 {
+			logger.Infof("agent", "turn %d: LLM done (no tool calls)", turn+1)
 			text, _ := choice.Message.Content.(string)
 			a.transport.SendSessionUpdate(a.sessionID, "text", map[string]string{"content": text})
 			return messages, choice.FinishReason, nil
@@ -82,6 +85,7 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 		// Execute tool calls
 		for _, tc := range choice.Message.ToolCalls {
+			logger.Infof("agent", "turn %d: tool call %s (id=%s)", turn+1, tc.Function.Name, tc.ID)
 			a.transport.SendSessionUpdate(a.sessionID, "tool.start", map[string]string{
 				"toolCallId": tc.ID, "name": tc.Function.Name,
 			})
@@ -92,6 +96,7 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 			status := "success"
 			if execErr != nil {
 				status = "error"
+				logger.Errorf("agent", "tool %s error: %v", tc.Function.Name, execErr)
 			}
 			a.transport.SendSessionUpdate(a.sessionID, "tool.done", map[string]any{
 				"toolCallId": tc.ID, "name": tc.Function.Name,
