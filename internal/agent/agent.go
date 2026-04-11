@@ -1,2 +1,133 @@
-// Package agent implements the agent loop (LLM ↔ tool-use cycle).
 package agent
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/xiwan/harness-factory/internal/acp"
+	"github.com/xiwan/harness-factory/internal/llm"
+	"github.com/xiwan/harness-factory/internal/permission"
+	"github.com/xiwan/harness-factory/internal/profile"
+	"github.com/xiwan/harness-factory/internal/tools"
+)
+
+type Agent struct {
+	profile   *profile.Profile
+	registry  *tools.Registry
+	checker   *permission.Checker
+	llmClient *llm.Client
+	transport *acp.Transport
+	cwd       string
+	sessionID string
+}
+
+func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd, sessionID string) *Agent {
+	return &Agent{
+		profile:   p,
+		registry:  reg,
+		checker:   permission.NewChecker(p),
+		llmClient: llm.NewClient(p.LiteLLMURL, p.LiteLLMAPIKey),
+		transport: transport,
+		cwd:       cwd,
+		sessionID: sessionID,
+	}
+}
+
+// Run executes the agent loop for a single prompt.
+func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string, error) {
+	// Build messages
+	messages := make([]llm.Message, 0, len(history)+2)
+	if a.profile.Agent.SystemPrompt != "" {
+		messages = append(messages, llm.Message{Role: "system", Content: a.profile.Agent.SystemPrompt})
+	}
+	messages = append(messages, history...)
+	messages = append(messages, llm.Message{Role: "user", Content: prompt})
+
+	// Get active tool definitions
+	toolDefs := a.registry.ActiveTools(a.profile)
+
+	maxTurns := a.profile.Resources.MaxTurns
+	if maxTurns <= 0 {
+		maxTurns = 20
+	}
+
+	for turn := 0; turn < maxTurns; turn++ {
+		// Call LLM
+		req := &llm.ChatRequest{
+			Model:       a.profile.Agent.Model,
+			Messages:    messages,
+			Temperature: a.profile.Agent.Temperature,
+		}
+		if len(toolDefs) > 0 {
+			req.Tools = toolDefs
+		}
+
+		resp, err := a.llmClient.Chat(req)
+		if err != nil {
+			return nil, "", fmt.Errorf("llm call failed: %w", err)
+		}
+		if len(resp.Choices) == 0 {
+			return nil, "", fmt.Errorf("llm returned no choices")
+		}
+
+		choice := resp.Choices[0]
+		messages = append(messages, choice.Message)
+
+		// No tool calls → done
+		if len(choice.Message.ToolCalls) == 0 {
+			text, _ := choice.Message.Content.(string)
+			a.transport.SendSessionUpdate(a.sessionID, "text", map[string]string{"content": text})
+			return messages, choice.FinishReason, nil
+		}
+
+		// Execute tool calls
+		for _, tc := range choice.Message.ToolCalls {
+			a.transport.SendSessionUpdate(a.sessionID, "tool.start", map[string]string{
+				"toolCallId": tc.ID, "name": tc.Function.Name,
+			})
+
+			// Permission check
+			result, execErr := a.executeTool(tc)
+
+			status := "success"
+			if execErr != nil {
+				status = "error"
+			}
+			a.transport.SendSessionUpdate(a.sessionID, "tool.done", map[string]any{
+				"toolCallId": tc.ID, "name": tc.Function.Name,
+				"status": status, "output": result,
+			})
+
+			messages = append(messages, llm.Message{
+				Role:       "tool",
+				Content:    result,
+				ToolCallID: tc.ID,
+			})
+		}
+	}
+
+	return messages, "max_turns", nil
+}
+
+func (a *Agent) executeTool(tc llm.ToolCall) (string, error) {
+	// Permission check — extract base command for shell
+	toolName := tc.Function.Name
+	if toolName == "shell_exec" {
+		var p struct{ Command string `json:"command"` }
+		json.Unmarshal([]byte(tc.Function.Arguments), &p)
+		baseCmd := tools.BaseCommand(p.Command)
+		if err := a.checker.Check("shell", baseCmd); err != nil {
+			return err.Error(), err
+		}
+	} else {
+		if err := a.checker.Check(toolName, ""); err != nil {
+			return err.Error(), err
+		}
+	}
+
+	result, err := a.registry.Execute(toolName, json.RawMessage(tc.Function.Arguments), a.cwd)
+	if err != nil {
+		return err.Error(), err
+	}
+	return result, nil
+}
