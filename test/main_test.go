@@ -2,18 +2,25 @@ package test
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
 )
 
 func TestVersion(t *testing.T) {
+	expected, err := os.ReadFile("../VERSION")
+	if err != nil {
+		t.Fatal("cannot read VERSION file:", err)
+	}
+	ver := strings.TrimSpace(string(expected))
+
 	out, err := exec.Command("go", "run", "../cmd/harness-factory", "--version").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "0.3.") {
-		t.Fatalf("expected version 0.3.x, got %s", string(out))
+	if strings.TrimSpace(string(out)) != ver {
+		t.Fatalf("expected version %s, got %s", ver, strings.TrimSpace(string(out)))
 	}
 }
 

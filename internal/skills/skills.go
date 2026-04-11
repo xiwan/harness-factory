@@ -4,17 +4,21 @@
 package skills
 
 import (
+	"embed"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
+//go:embed bundled/*/SKILL.md
+var bundledFS embed.FS
+
 // Skill represents a loaded skill.
 type Skill struct {
 	Name        string
 	Description string
-	Dir         string // absolute path to skill directory
-	Body        string // full SKILL.md content below frontmatter (lazy loaded)
+	Dir         string // absolute path to skill directory (empty for embedded)
+	Body        string // full SKILL.md content below frontmatter
 }
 
 // Loader scans a skills directory and provides metadata + on-demand body loading.
@@ -22,15 +26,41 @@ type Loader struct {
 	skills map[string]*Skill
 }
 
-// NewLoader scans the given directory for skills (each subdirectory with SKILL.md).
+// NewLoader loads skills from: 1) embedded bundled skills, 2) external dir (overrides bundled).
 func NewLoader(dir string) *Loader {
 	l := &Loader{skills: make(map[string]*Skill)}
-	if dir == "" {
-		return l
+	l.loadBundled()
+	if dir != "" {
+		l.loadDir(dir)
 	}
+	return l
+}
+
+func (l *Loader) loadBundled() {
+	entries, err := bundledFS.ReadDir("bundled")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		data, err := bundledFS.ReadFile("bundled/" + e.Name() + "/SKILL.md")
+		if err != nil {
+			continue
+		}
+		name, desc, body := parseFrontmatter(string(data))
+		if name == "" {
+			name = e.Name()
+		}
+		l.skills[name] = &Skill{Name: name, Description: desc, Body: body}
+	}
+}
+
+func (l *Loader) loadDir(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return l
+		return
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -46,14 +76,8 @@ func NewLoader(dir string) *Loader {
 		if name == "" {
 			name = e.Name()
 		}
-		l.skills[name] = &Skill{
-			Name:        name,
-			Description: desc,
-			Dir:         skillDir,
-			Body:        body,
-		}
+		l.skills[name] = &Skill{Name: name, Description: desc, Dir: skillDir, Body: body}
 	}
-	return l
 }
 
 // Metadata returns a compact string of all skill names + descriptions for system prompt injection.
