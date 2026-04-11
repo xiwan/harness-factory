@@ -7,7 +7,7 @@ harness-factory is a lightweight ACP agent binary. Bridge forks it, passes a pro
 ```
 acp-bridge (HTTP)
     ↕ fork + stdin/stdout (ACP JSON-RPC)
-harness-factory (Go binary, ~8MB)
+harness-factory (Go binary, ~6MB)
     ↕ LiteLLM (OpenAI-compatible)
 LLM provider (Bedrock/OpenAI/...)
 ```
@@ -73,7 +73,7 @@ Binary exists + tests pass?
 ### 3.2 Build
 
 ```bash
-go build -o harness-factory ./cmd/harness-factory
+make build
 ./harness-factory --version
 ```
 
@@ -94,10 +94,11 @@ Add harness agent to acp-bridge `config.yaml`:
 agents:
   pr-reviewer:
     enabled: true
-    mode: "harness"
+    mode: "acp"
     command: "/path/to/harness-factory"
+    acp_args: []
     working_dir: "/tmp"
-    description: "Code review agent — read-only, runs linters"
+    description: "Code review agent (harness-factory)"
     profile:
       tools:
         fs: { permissions: [read, list] }
@@ -124,19 +125,18 @@ Bridge injects `litellm_url` and `litellm_api_key` automatically.
 ### 5.1 Protocol Compliance
 
 ```bash
-bash test/test_agent_compliance.sh ./harness-factory
+make test
 ```
 
-Expected: 6/6 protocol tests pass (no LiteLLM needed).
+Expected: 3/3 Go unit tests pass.
 
-### 5.2 End-to-End (needs LiteLLM + .env)
+### 5.2 Full Compliance + E2E
 
 ```bash
-# Source env and run full suite
-bash test/test_agent_compliance.sh ./harness-factory
+make test-e2e
 ```
 
-Expected: 10/10 all tests pass.
+Expected: 10/10 all tests pass (needs LiteLLM + .env).
 
 ### 5.3 Manual stdin Test
 
@@ -146,7 +146,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./harness-fa
 
 Expected:
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"harness-factory","version":"0.2.1"},"capabilities":{}}}
+{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"harness-factory","version":"0.3.0"},"capabilities":{}}}
 ```
 
 ---
@@ -158,16 +158,18 @@ Expected:
 | Method | Direction | Purpose |
 |---|---|---|
 | `initialize` | → harness | Returns agentInfo + capabilities |
-| `ping` | → harness | Health check, returns `"pong"` |
+| `ping` | → harness | Health check, returns `{}` |
 | `session/new` | → harness | Create session with profile, returns sessionId |
 | `session/prompt` | → harness | Run agent loop for a prompt |
-| `session/update` | ← harness | Notification: tool.start, tool.done, text |
+| `session/cancel` | → harness | Cancel current execution (notification, no response) |
+| `session/update` | ← harness | Notifications: `tool_call`, `tool_call_update`, `agent_message_chunk` |
 
 ### session/new Params
 
 ```json
 {
   "cwd": "/workspace/project",
+  "mcpServers": [],
   "profile": {
     "tools": {
       "fs": { "permissions": ["read", "write", "list", "search"] },
@@ -176,7 +178,7 @@ Expected:
       "web": { "permissions": ["fetch"] }
     },
     "orchestration": "free",
-    "resources": { "timeout": "300s", "max_turns": 20 },
+    "resources": { "timeout": "300s", "max_turns": 20, "log_level": "info" },
     "agent": {
       "model": "bedrock/anthropic.claude-sonnet-4-6",
       "system_prompt": "You are a ...",
@@ -188,12 +190,30 @@ Expected:
 }
 ```
 
+### session/prompt Params
+
+```json
+{
+  "sessionId": "<session_id>",
+  "prompt": [{"type": "text", "text": "user input"}]
+}
+```
+
+### session/prompt Response
+
+```json
+{
+  "sessionId": "<session_id>",
+  "stopReason": "end_turn"
+}
+```
+
 ### session/update Notifications
 
 ```json
-{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","kind":"tool.start","data":{"toolCallId":"...","name":"fs_read"}}}
-{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","kind":"tool.done","data":{"toolCallId":"...","name":"fs_read","status":"success","output":"..."}}}
-{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","kind":"text","data":{"content":"Final response text"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","update":{"sessionUpdate":"tool_call","toolCallId":"...","title":"fs_read","status":"running"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","update":{"sessionUpdate":"tool_call_update","toolCallId":"...","title":"fs_read","status":"completed","content":{"text":"file contents..."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","update":{"sessionUpdate":"agent_message_chunk","content":{"text":"Final response text"}}}}
 ```
 
 ### Tool Names (as exposed to LLM)
@@ -211,23 +231,7 @@ Two layers:
 1. **Exposure** — Only activated tools appear in LLM tool definitions
 2. **Enforcement** — Permission checker blocks unauthorized calls at runtime
 
-### Key Files
-
-| File | Purpose |
-|---|---|
-| `cmd/harness-factory/main.go` | Entry point, ACP JSON-RPC loop |
-| `internal/acp/acp.go` | stdin/stdout JSON-RPC transport |
-| `internal/profile/profile.go` | Profile struct + permission queries |
-| `internal/permission/permission.go` | Runtime permission checker |
-| `internal/tools/registry.go` | Tool registry + activation filter |
-| `internal/tools/fs.go` | File system operations |
-| `internal/tools/git.go` | Git operations |
-| `internal/tools/shell.go` | Shell exec with allowlist |
-| `internal/tools/web.go` | HTTP fetch |
-| `internal/llm/llm.go` | LiteLLM HTTP client |
-| `internal/agent/agent.go` | Agent loop (LLM ↔ tool-use) |
-| `test/test_agent_compliance.sh` | Compliance + e2e test suite |
-| `.env.example` | Environment template |
+---
 
 ### Profile Reference
 
@@ -309,6 +313,26 @@ These are set by acp-bridge automatically, not by the user:
 
 ---
 
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `cmd/harness-factory/main.go` | Entry point, ACP JSON-RPC loop |
+| `internal/acp/acp.go` | stdin/stdout JSON-RPC transport |
+| `internal/profile/profile.go` | Profile struct + permission queries |
+| `internal/permission/permission.go` | Runtime permission checker |
+| `internal/tools/registry.go` | Tool registry + activation filter |
+| `internal/tools/fs.go` | File system operations |
+| `internal/tools/git.go` | Git operations |
+| `internal/tools/shell.go` | Shell exec with allowlist |
+| `internal/tools/web.go` | HTTP fetch |
+| `internal/llm/llm.go` | LiteLLM HTTP client |
+| `internal/agent/agent.go` | Agent loop (LLM ↔ tool-use) |
+| `internal/logger/logger.go` | Structured stderr logging |
+| `test/test_agent_compliance.sh` | Compliance + e2e test suite |
+| `.env.example` | Environment template |
+| `Makefile` | Build, test, run commands |
+
 ### Troubleshooting
 
 | Symptom | Fix |
@@ -319,4 +343,6 @@ These are set by acp-bridge automatically, not by the user:
 | `tool "X" not activated in profile` | Add tool to profile's `tools` section |
 | `fs.write not permitted` | Add `write` to `fs.permissions` in profile |
 | `shell command "X" not in allowlist` | Add command to `shell.allowlist` in profile |
-| Binary too large | `go build -ldflags="-s -w"` strips debug info (~5MB) |
+| Binary too large | `make build` uses `-ldflags="-s -w"` for stripped binary (~6MB) |
+| No logs | Set `HARNESS_LOG_LEVEL=debug` or `log_level: debug` in profile resources |
+| Logs polluting stdout | Logs go to stderr only, stdout is reserved for JSON-RPC |
