@@ -107,7 +107,7 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 			status := "completed"
 			if execErr != nil {
-				status = "error"
+				status = "failed"
 				logger.Errorf("agent", "tool %s error: %v", tc.Function.Name, execErr)
 			}
 			a.transport.SendToolCallUpdate(a.sessionID, tc.ID, tc.Function.Name, status, result)
