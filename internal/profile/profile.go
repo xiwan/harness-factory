@@ -17,9 +17,10 @@ type ToolConfig struct {
 }
 
 type Resources struct {
-	Timeout  string `json:"timeout"`
-	MaxTurns int    `json:"max_turns"`
-	LogLevel string `json:"log_level,omitempty"`
+	Timeout   string `json:"timeout"`
+	MaxTurns  int    `json:"max_turns"`
+	LogLevel  string `json:"log_level,omitempty"`
+	SkillsDir string `json:"skills_dir,omitempty"`
 }
 
 type AgentConfig struct {

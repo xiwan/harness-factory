@@ -3,34 +3,51 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/xiwan/harness-factory/internal/acp"
 	"github.com/xiwan/harness-factory/internal/llm"
 	"github.com/xiwan/harness-factory/internal/logger"
 	"github.com/xiwan/harness-factory/internal/permission"
 	"github.com/xiwan/harness-factory/internal/profile"
+	"github.com/xiwan/harness-factory/internal/skills"
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
 type Agent struct {
-	profile   *profile.Profile
-	registry  *tools.Registry
-	checker   *permission.Checker
-	llmClient *llm.Client
-	transport *acp.Transport
-	cwd       string
-	sessionID string
+	profile      *profile.Profile
+	registry     *tools.Registry
+	checker      *permission.Checker
+	llmClient    *llm.Client
+	transport    *acp.Transport
+	skillsLoader *skills.Loader
+	cwd          string
+	sessionID    string
 }
 
 func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd, sessionID string) *Agent {
+	// Resolve skills directory
+	skillsDir := p.Resources.SkillsDir
+	if skillsDir == "" {
+		skillsDir = "skills"
+	}
+	if !filepath.IsAbs(skillsDir) {
+		skillsDir = filepath.Join(cwd, skillsDir)
+	}
+	sl := skills.NewLoader(skillsDir)
+	if sl.Count() > 0 {
+		logger.Infof("agent", "loaded %d skills from %s: %v", sl.Count(), skillsDir, sl.Names())
+	}
+
 	return &Agent{
-		profile:   p,
-		registry:  reg,
-		checker:   permission.NewChecker(p),
-		llmClient: llm.NewClient(p.LiteLLMURL, p.LiteLLMAPIKey),
-		transport: transport,
-		cwd:       cwd,
-		sessionID: sessionID,
+		profile:      p,
+		registry:     reg,
+		checker:      permission.NewChecker(p),
+		llmClient:    llm.NewClient(p.LiteLLMURL, p.LiteLLMAPIKey),
+		transport:    transport,
+		skillsLoader: sl,
+		cwd:          cwd,
+		sessionID:    sessionID,
 	}
 }
 
@@ -38,7 +55,8 @@ func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd,
 func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string, error) {
 	messages := make([]llm.Message, 0, len(history)+2)
 	if a.profile.Agent.SystemPrompt != "" {
-		messages = append(messages, llm.Message{Role: "system", Content: a.profile.Agent.SystemPrompt})
+		sysPrompt := a.profile.Agent.SystemPrompt + a.skillsLoader.Metadata()
+		messages = append(messages, llm.Message{Role: "system", Content: sysPrompt})
 	}
 	messages = append(messages, history...)
 	messages = append(messages, llm.Message{Role: "user", Content: prompt})
