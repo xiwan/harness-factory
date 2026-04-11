@@ -1,0 +1,15 @@
+tools:
+  fs:
+    permissions: [read, list, search]
+  git:
+    permissions: [status, diff, log]
+  shell:
+    allowlist: [echo, date, pwd, ls, cat, grep, find, wc, head, tail]
+orchestration: free
+resources:
+  timeout: 300s
+  max_turns: 20
+  log_level: info
+agent:
+  system_prompt: "You are a helpful assistant. You can read files, check git status, and run basic commands. You cannot modify files or push changes. Be concise."
+  temperature: 0.3

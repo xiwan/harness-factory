@@ -1,106 +1,113 @@
+// Package profile handles profile parsing and tool activation.
 package profile
+
+import (
+	"embed"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+//go:embed bundled/*.yaml
+var bundledFS embed.FS
 
 // Profile represents the runtime configuration passed via session/new.
 type Profile struct {
-	Tools         map[string]ToolConfig `json:"tools"`
-	Orchestration string                `json:"orchestration"` // free | constrained | pipeline
-	Resources     Resources             `json:"resources"`
-	Agent         AgentConfig           `json:"agent"`
-	LiteLLMURL    string                `json:"litellm_url"`
-	LiteLLMAPIKey string                `json:"litellm_api_key"`
+	Tools         map[string]ToolConfig `json:"tools" yaml:"tools"`
+	Orchestration string                `json:"orchestration" yaml:"orchestration"`
+	Resources     Resources             `json:"resources" yaml:"resources"`
+	Agent         AgentConfig           `json:"agent" yaml:"agent"`
+	LiteLLMURL    string                `json:"litellm_url" yaml:"litellm_url"`
+	LiteLLMAPIKey string                `json:"litellm_api_key" yaml:"litellm_api_key"`
 }
 
 type ToolConfig struct {
-	Permissions []string `json:"permissions,omitempty"`
-	Allowlist   []string `json:"allowlist,omitempty"`
-	Blocklist   []string `json:"blocklist,omitempty"`
+	Permissions []string `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+	Allowlist   []string `json:"allowlist,omitempty" yaml:"allowlist,omitempty"`
+	Blocklist   []string `json:"blocklist,omitempty" yaml:"blocklist,omitempty"`
 }
 
 type Resources struct {
-	Timeout   string `json:"timeout"`
-	MaxTurns  int    `json:"max_turns"`
-	LogLevel  string `json:"log_level,omitempty"`
-	SkillsDir string `json:"skills_dir,omitempty"`
+	Timeout   string `json:"timeout" yaml:"timeout"`
+	MaxTurns  int    `json:"max_turns" yaml:"max_turns"`
+	LogLevel  string `json:"log_level,omitempty" yaml:"log_level,omitempty"`
+	SkillsDir string `json:"skills_dir,omitempty" yaml:"skills_dir,omitempty"`
 }
 
 type AgentConfig struct {
-	Model        string  `json:"model"`
-	SystemPrompt string  `json:"system_prompt"`
-	Temperature  float64 `json:"temperature"`
+	Model        string  `json:"model" yaml:"model"`
+	SystemPrompt string  `json:"system_prompt" yaml:"system_prompt"`
+	Temperature  float64 `json:"temperature" yaml:"temperature"`
 }
 
-// Built-in profile templates.
-var BuiltinProfiles = map[string]Profile{
-	"default": {
-		Tools: map[string]ToolConfig{
-			"fs":    {Permissions: []string{"read", "list", "search"}},
-			"git":   {Permissions: []string{"status", "diff", "log"}},
-			"shell": {Allowlist: []string{"echo", "date", "pwd", "ls", "cat", "grep", "find", "wc", "head", "tail"}},
-		},
-		Orchestration: "free",
-		Resources:     Resources{Timeout: "300s", MaxTurns: 20, LogLevel: "info"},
-		Agent: AgentConfig{
-			SystemPrompt: "You are a helpful assistant. You can read files, check git status, and run basic commands. You cannot modify files or push changes. Be concise.",
-			Temperature:  0.3,
-		},
-	},
-	"pr-reviewer": {
-		Tools: map[string]ToolConfig{
-			"fs":    {Permissions: []string{"read", "list"}},
-			"git":   {Permissions: []string{"diff", "log", "show"}},
-			"shell": {Allowlist: []string{"pytest", "mypy", "grep", "find"}},
-		},
-		Orchestration: "free",
-		Resources:     Resources{Timeout: "300s", MaxTurns: 20, LogLevel: "info"},
-		Agent: AgentConfig{
-			SystemPrompt: "You are a code reviewer. Analyze diffs, read relevant files, run linters if needed. Produce a structured review: summary, issues, suggestions. Do not modify files.",
-			Temperature:  0.3,
-		},
-	},
-	"devops": {
-		Tools: map[string]ToolConfig{
-			"fs":    {Permissions: []string{"all"}},
-			"git":   {Permissions: []string{"all"}},
-			"shell": {Allowlist: []string{"docker", "kubectl", "terraform", "make", "grep", "find", "cat", "ls"}},
-			"web":   {Permissions: []string{"fetch"}},
-		},
-		Orchestration: "free",
-		Resources:     Resources{Timeout: "600s", MaxTurns: 50, LogLevel: "info"},
-		Agent: AgentConfig{
-			SystemPrompt: "You are a DevOps engineer with full access to filesystem, git, shell, and web. Execute infrastructure tasks, deploy, and troubleshoot. Confirm destructive operations before executing.",
-			Temperature:  0.3,
-		},
-	},
-	"research": {
-		Tools: map[string]ToolConfig{
-			"fs":  {Permissions: []string{"read", "list", "search"}},
-			"web": {Permissions: []string{"fetch"}},
-		},
-		Orchestration: "free",
-		Resources:     Resources{Timeout: "300s", MaxTurns: 20, LogLevel: "info"},
-		Agent: AgentConfig{
-			SystemPrompt: "You are a research assistant. Read files, search codebases, and fetch web content. Summarize findings clearly. You cannot modify files or run commands.",
-			Temperature:  0.3,
-		},
-	},
+// Built-in profiles loaded from embedded YAML files.
+var builtinProfiles map[string]Profile
+
+func init() {
+	builtinProfiles = make(map[string]Profile)
+	entries, err := bundledFS.ReadDir("bundled")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		data, err := bundledFS.ReadFile("bundled/" + e.Name())
+		if err != nil {
+			continue
+		}
+		var p Profile
+		if yaml.Unmarshal(data, &p) != nil {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".yaml")
+		builtinProfiles[name] = p
+	}
 }
 
 // GetBuiltin returns a built-in profile by name, or the default profile if not found.
-func GetBuiltin(name string) Profile {
-	if p, ok := BuiltinProfiles[name]; ok {
+// If profilesDir is provided, external YAML files override bundled ones.
+func GetBuiltin(name string, profilesDir ...string) Profile {
+	// Try external dir first
+	if len(profilesDir) > 0 && profilesDir[0] != "" {
+		if p, ok := loadFromDir(profilesDir[0], name); ok {
+			return p
+		}
+	}
+	if p, ok := builtinProfiles[name]; ok {
 		return p
 	}
-	return BuiltinProfiles["default"]
+	if p, ok := builtinProfiles["default"]; ok {
+		return p
+	}
+	return Profile{}
 }
 
 // BuiltinNames returns all available built-in profile names.
 func BuiltinNames() []string {
-	names := make([]string, 0, len(BuiltinProfiles))
-	for k := range BuiltinProfiles {
+	names := make([]string, 0, len(builtinProfiles))
+	for k := range builtinProfiles {
 		names = append(names, k)
 	}
 	return names
 }
+
+func loadFromDir(dir, name string) (Profile, bool) {
+	path := filepath.Join(dir, name+".yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Profile{}, false
+	}
+	var p Profile
+	if yaml.Unmarshal(data, &p) != nil {
+		return Profile{}, false
+	}
+	return p, true
+}
+
 // HasTool returns true if the profile activates the given tool.
 func (p *Profile) HasTool(name string) bool {
 	_, ok := p.Tools[name]

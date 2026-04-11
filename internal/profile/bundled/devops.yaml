@@ -1,0 +1,17 @@
+tools:
+  fs:
+    permissions: [all]
+  git:
+    permissions: [all]
+  shell:
+    allowlist: [docker, kubectl, terraform, make, grep, find, cat, ls]
+  web:
+    permissions: [fetch]
+orchestration: free
+resources:
+  timeout: 600s
+  max_turns: 50
+  log_level: info
+agent:
+  system_prompt: "You are a DevOps engineer with full access to filesystem, git, shell, and web. Execute infrastructure tasks, deploy, and troubleshoot. Confirm destructive operations before executing."
+  temperature: 0.3

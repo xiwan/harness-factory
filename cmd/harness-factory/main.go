@@ -27,11 +27,14 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Parse --profile flag
-	var profileName string
+	// Parse flags
+	var profileName, profilesDir string
 	for i, arg := range os.Args[1:] {
 		if arg == "--profile" && i+1 < len(os.Args)-1 {
 			profileName = os.Args[i+2]
+		}
+		if arg == "--profiles-dir" && i+1 < len(os.Args)-1 {
+			profilesDir = os.Args[i+2]
 		}
 	}
 
@@ -85,10 +88,10 @@ func main() {
 			p := params.Profile
 			if len(p.Tools) == 0 {
 				if profileName != "" {
-					p = profile.GetBuiltin(profileName)
+					p = profile.GetBuiltin(profileName, profilesDir)
 					logger.Infof("main", "using --profile %s", profileName)
 				} else {
-					p = profile.GetBuiltin("default")
+					p = profile.GetBuiltin("default", profilesDir)
 					logger.Info("main", "no profile provided, using default")
 				}
 				// Preserve litellm config from params if set
