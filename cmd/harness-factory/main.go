@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/xiwan/harness-factory/internal/acp"
 	"github.com/xiwan/harness-factory/internal/agent"
@@ -14,7 +15,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.2.4"
+var version = "0.2.5"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -82,14 +83,15 @@ func main() {
 				continue
 			}
 			var params struct {
-				Prompt string `json:"prompt"`
+				Prompt json.RawMessage `json:"prompt"`
 			}
 			if err := json.Unmarshal(req.Params, &params); err != nil {
 				transport.SendError(req.ID, -32602, "invalid params: "+err.Error())
 				continue
 			}
-			logger.Infof("main", "session/prompt len=%d", len(params.Prompt))
-			newHistory, stopReason, err := currentAgent.Run(params.Prompt, history)
+			prompt := parsePrompt(params.Prompt)
+			logger.Infof("main", "session/prompt len=%d", len(prompt))
+			newHistory, stopReason, err := currentAgent.Run(prompt, history)
 			if err != nil {
 				logger.Errorf("main", "agent error: %v", err)
 				transport.SendError(req.ID, -32000, err.Error())
@@ -112,4 +114,31 @@ func toolNames(p profile.Profile) []string {
 		names = append(names, k)
 	}
 	return names
+}
+
+// parsePrompt handles both string and ACP array format:
+//   "hello"                                → "hello"
+//   [{"type":"text","text":"hello"}]       → "hello"
+func parsePrompt(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &parts) == nil {
+		var sb strings.Builder
+		for _, p := range parts {
+			if p.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(p.Text)
+			}
+		}
+		return sb.String()
+	}
+	return string(raw)
 }
