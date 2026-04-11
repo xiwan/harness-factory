@@ -229,6 +229,86 @@ Two layers:
 | `test/test_agent_compliance.sh` | Compliance + e2e test suite |
 | `.env.example` | Environment template |
 
+### Profile Reference
+
+Profile is passed via `session/new` params. It defines what tools are activated, what permissions they have, and how the agent behaves.
+
+```yaml
+tools:                                    # which tools to activate
+  fs:
+    permissions: [read]                   # read | write | list | search | all
+  git:
+    permissions: [diff, log, show]        # status | diff | log | show | commit | push | all
+  shell:
+    allowlist: [pytest, mypy, grep]       # whitelist mode (recommended)
+    # blocklist: [rm, sudo, chmod]        # blacklist mode (pick one)
+  web:
+    permissions: [fetch]                  # fetch | all
+
+orchestration: free                       # free | constrained | pipeline (P1)
+
+resources:
+  timeout: 300s                           # per-prompt timeout
+  max_turns: 20                           # max LLM ↔ tool rounds per prompt
+  log_level: info                         # debug | info | error
+
+agent:
+  model: "bedrock/anthropic.claude-sonnet-4-6"  # LiteLLM model name
+  system_prompt: "You are a ..."          # system prompt for LLM
+  temperature: 0.3                        # LLM temperature (0.0 - 1.0)
+
+litellm_url: "http://localhost:4000"      # injected by Bridge
+litellm_api_key: "sk-..."                # injected by Bridge
+```
+
+#### tools
+
+| Tool | Valid permissions | Description |
+|------|-----------------|-------------|
+| `fs` | `read`, `write`, `list`, `search`, `all` | File system operations |
+| `git` | `status`, `diff`, `log`, `show`, `commit`, `push`, `all` | Git operations |
+| `shell` | N/A — uses `allowlist` or `blocklist` | Shell command execution |
+| `web` | `fetch`, `all` | HTTP fetch |
+
+- `all` grants every operation for that tool
+- `shell` uses `allowlist` (recommended) or `blocklist`, not `permissions`
+- Omitted tools are not activated — LLM cannot see or call them
+
+#### orchestration
+
+| Value | Behavior |
+|-------|----------|
+| `free` | No constraints, agent decides freely |
+| `constrained` | Runtime checks: prerequisites + mutual exclusion (P1) |
+| `pipeline` | Fixed step flow (P2) |
+
+#### resources
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `timeout` | string | `"300s"` | Per-prompt timeout |
+| `max_turns` | int | `20` | Max LLM ↔ tool rounds |
+| `log_level` | string | `"info"` | `debug` \| `info` \| `error` — overrides `HARNESS_LOG_LEVEL` env |
+
+#### agent
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `model` | string | yes | LiteLLM model name (e.g. `bedrock/anthropic.claude-sonnet-4-6`) |
+| `system_prompt` | string | yes | System prompt injected into every LLM call |
+| `temperature` | float | no | LLM temperature, default `0` |
+
+#### Bridge-injected fields
+
+These are set by acp-bridge automatically, not by the user:
+
+| Field | Description |
+|-------|-------------|
+| `litellm_url` | LiteLLM proxy URL |
+| `litellm_api_key` | LiteLLM API key |
+
+---
+
 ### Troubleshooting
 
 | Symptom | Fix |

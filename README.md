@@ -54,6 +54,8 @@ bash test/test_agent_compliance.sh ./harness-factory
 
 ## Profile Example
 
+> Full profile reference with all fields, types, and valid values → [AGENT.md#profile-reference](AGENT.md#profile-reference)
+
 ```json
 {
   "tools": {
