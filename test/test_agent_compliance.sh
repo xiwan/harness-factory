@@ -46,9 +46,9 @@ run_test "initialize → agentInfo" \
   '"agentInfo"'
 
 # 3. ping
-run_test "ping → pong" \
+run_test "ping → result" \
   '{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}' \
-  '"pong"'
+  '"result"'
 
 # 4. session/new
 run_test "session/new → sessionId" \
@@ -78,20 +78,20 @@ if [ -n "$LITELLM_KEY" ]; then
   E2E_OUT=$(cat <<JSONRPC | "$BINARY" 2>/dev/null
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/tmp","profile":{"tools":{"fs":{"permissions":["read","list"]},"shell":{"allowlist":["echo"]}},"orchestration":"free","resources":{"timeout":"60s","max_turns":5},"agent":{"model":"$MODEL","system_prompt":"You are a test agent. Always use tools. Be concise.","temperature":0.3},"litellm_url":"$LITELLM_URL","litellm_api_key":"$LITELLM_KEY"}}}
-{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":"Run: echo hello"}}
+{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"test","prompt":[{"type":"text","text":"Run: echo hello"}]}}
 JSONRPC
 ) || true
 
-  if echo "$E2E_OUT" | grep -q '"tool.start"'; then
-    echo "✅ e2e: tool.start notification"; PASS=$((PASS + 1))
+  if echo "$E2E_OUT" | grep -q '"tool_call"'; then
+    echo "✅ e2e: tool_call notification"; PASS=$((PASS + 1))
   else
-    echo "❌ e2e: tool.start notification"; FAIL=$((FAIL + 1))
+    echo "❌ e2e: tool_call notification"; FAIL=$((FAIL + 1))
   fi
 
-  if echo "$E2E_OUT" | grep -q '"tool.done"'; then
-    echo "✅ e2e: tool.done notification"; PASS=$((PASS + 1))
+  if echo "$E2E_OUT" | grep -q '"tool_call_update"'; then
+    echo "✅ e2e: tool_call_update notification"; PASS=$((PASS + 1))
   else
-    echo "❌ e2e: tool.done notification"; FAIL=$((FAIL + 1))
+    echo "❌ e2e: tool_call_update notification"; FAIL=$((FAIL + 1))
   fi
 
   if echo "$E2E_OUT" | grep -q '"stopReason"'; then
@@ -104,7 +104,7 @@ JSONRPC
   PERM_OUT=$(cat <<JSONRPC | "$BINARY" 2>/dev/null
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/tmp","profile":{"tools":{"fs":{"permissions":["read"]}},"orchestration":"free","resources":{"timeout":"60s","max_turns":3},"agent":{"model":"$MODEL","system_prompt":"Always try to write files.","temperature":0.3},"litellm_url":"$LITELLM_URL","litellm_api_key":"$LITELLM_KEY"}}}
-{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":"Write 'test' to /tmp/perm_test.txt"}}
+{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"test","prompt":[{"type":"text","text":"Write 'test' to /tmp/perm_test.txt"}]}}
 JSONRPC
 ) || true
 

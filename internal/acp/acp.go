@@ -29,7 +29,6 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// Notification is a JSON-RPC notification (no id).
 type Notification struct {
 	JSONRPC string `json:"jsonrpc"`
 	Method  string `json:"method"`
@@ -63,21 +62,10 @@ func (t *Transport) ReadRequest() (*Request, error) {
 	return &req, nil
 }
 
-func (t *Transport) WriteResponse(resp *Response) error {
+func (t *Transport) write(v any) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	b, err := json.Marshal(resp)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(t.writer, string(b))
-	return err
-}
-
-func (t *Transport) WriteNotification(n *Notification) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	b, err := json.Marshal(n)
+	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
@@ -86,25 +74,67 @@ func (t *Transport) WriteNotification(n *Notification) error {
 }
 
 func (t *Transport) SendResult(id any, result any) error {
-	return t.WriteResponse(&Response{JSONRPC: "2.0", ID: id, Result: result})
+	return t.write(&Response{JSONRPC: "2.0", ID: id, Result: result})
 }
 
 func (t *Transport) SendError(id any, code int, msg string) error {
-	return t.WriteResponse(&Response{JSONRPC: "2.0", ID: id, Error: &Error{Code: code, Message: msg}})
+	return t.write(&Response{JSONRPC: "2.0", ID: id, Error: &Error{Code: code, Message: msg}})
 }
 
-// Session update notification helpers
+// ACP standard session/update notifications
+// Format: {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"...","update":{...}}}
 
-type SessionUpdate struct {
+type sessionUpdateParams struct {
 	SessionID string `json:"sessionId"`
-	Kind      string `json:"kind"`
-	Data      any    `json:"data,omitempty"`
+	Update    any    `json:"update"`
 }
 
-func (t *Transport) SendSessionUpdate(sessionID, kind string, data any) error {
-	return t.WriteNotification(&Notification{
+// SendTextChunk sends an agent_message_chunk notification.
+func (t *Transport) SendTextChunk(sessionID, text string) error {
+	return t.write(&Notification{
 		JSONRPC: "2.0",
 		Method:  "session/update",
-		Params:  SessionUpdate{SessionID: sessionID, Kind: kind, Data: data},
+		Params: sessionUpdateParams{
+			SessionID: sessionID,
+			Update: map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"content":       map[string]string{"text": text},
+			},
+		},
+	})
+}
+
+// SendToolCall sends a tool_call notification (status: running).
+func (t *Transport) SendToolCall(sessionID, toolCallID, title string) error {
+	return t.write(&Notification{
+		JSONRPC: "2.0",
+		Method:  "session/update",
+		Params: sessionUpdateParams{
+			SessionID: sessionID,
+			Update: map[string]any{
+				"sessionUpdate": "tool_call",
+				"toolCallId":    toolCallID,
+				"title":         title,
+				"status":        "running",
+			},
+		},
+	})
+}
+
+// SendToolCallUpdate sends a tool_call_update notification (completed/error).
+func (t *Transport) SendToolCallUpdate(sessionID, toolCallID, title, status, output string) error {
+	return t.write(&Notification{
+		JSONRPC: "2.0",
+		Method:  "session/update",
+		Params: sessionUpdateParams{
+			SessionID: sessionID,
+			Update: map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    toolCallID,
+				"title":         title,
+				"status":        status,
+				"content":       map[string]string{"text": output},
+			},
+		},
 	})
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.2.5"
+var version = "0.3.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -57,12 +57,13 @@ func main() {
 			})
 
 		case "ping":
-			transport.SendResult(req.ID, "pong")
+			transport.SendResult(req.ID, map[string]any{})
 
 		case "session/new":
 			var params struct {
-				CWD     string          `json:"cwd"`
-				Profile profile.Profile `json:"profile"`
+				CWD        string          `json:"cwd"`
+				Profile    profile.Profile `json:"profile"`
+				MCPServers json.RawMessage `json:"mcpServers"`
 			}
 			if err := json.Unmarshal(req.Params, &params); err != nil {
 				transport.SendError(req.ID, -32602, "invalid params: "+err.Error())
@@ -83,7 +84,8 @@ func main() {
 				continue
 			}
 			var params struct {
-				Prompt json.RawMessage `json:"prompt"`
+				SessionID string          `json:"sessionId"`
+				Prompt    json.RawMessage `json:"prompt"`
 			}
 			if err := json.Unmarshal(req.Params, &params); err != nil {
 				transport.SendError(req.ID, -32602, "invalid params: "+err.Error())
@@ -99,7 +101,14 @@ func main() {
 			}
 			logger.Infof("main", "session/prompt done reason=%s turns=%d", stopReason, len(newHistory))
 			history = newHistory
-			transport.SendResult(req.ID, map[string]string{"stopReason": stopReason})
+			transport.SendResult(req.ID, map[string]string{
+				"sessionId":  sessionID,
+				"stopReason": stopReason,
+			})
+
+		case "session/cancel":
+			// Notification, no response required
+			logger.Info("main", "session/cancel received")
 
 		default:
 			logger.Debugf("main", "unknown method: %s", req.Method)
@@ -116,19 +125,17 @@ func toolNames(p profile.Profile) []string {
 	return names
 }
 
-// parsePrompt handles both string and ACP array format:
-//   "hello"                                → "hello"
-//   [{"type":"text","text":"hello"}]       → "hello"
+// parsePrompt handles ACP standard array format and plain string:
+//
+//	[{"type":"text","text":"hello"}]  → "hello"
+//	"hello"                           → "hello"
 func parsePrompt(raw json.RawMessage) string {
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return s
-	}
+	// Try ACP array format first (standard)
 	var parts []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	if json.Unmarshal(raw, &parts) == nil {
+	if json.Unmarshal(raw, &parts) == nil && len(parts) > 0 {
 		var sb strings.Builder
 		for _, p := range parts {
 			if p.Text != "" {
@@ -139,6 +146,11 @@ func parsePrompt(raw json.RawMessage) string {
 			}
 		}
 		return sb.String()
+	}
+	// Fallback: plain string
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
 	}
 	return string(raw)
 }
