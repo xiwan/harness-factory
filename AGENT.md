@@ -309,7 +309,17 @@ These are set by acp-bridge automatically, not by the user:
 | Field | Description |
 |-------|-------------|
 | `litellm_url` | LiteLLM proxy URL |
-| `litellm_api_key` | LiteLLM API key |
+| `litellm_api_key` | LiteLLM proxy API key (NOT the provider key) |
+
+#### LLM call chain
+
+```
+harness-factory --[litellm_api_key]--> LiteLLM proxy --[provider keys]--> Bedrock / OpenAI / Anthropic / ...
+```
+
+- `model` field is passed verbatim to LiteLLM. LiteLLM routes by prefix: `bedrock/`, `anthropic/`, `azure/`, `ollama/`, etc.
+- Provider API keys (AWS creds, OPENAI_API_KEY, etc.) are configured on the LiteLLM side, not in harness-factory.
+- harness-factory only needs `litellm_url` + `litellm_api_key` to reach any provider LiteLLM supports.
 
 ---
 

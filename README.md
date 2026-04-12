@@ -170,6 +170,21 @@ test/
   test_agent_compliance.sh    — ACP compliance + e2e test
 ```
 
+## Supported Models
+
+harness-factory calls LLMs through [LiteLLM](https://docs.litellm.ai/) proxy — any provider LiteLLM supports works out of the box:
+
+| Provider | Model example | LiteLLM config |
+|----------|--------------|----------------|
+| AWS Bedrock | `bedrock/anthropic.claude-sonnet-4-6` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION_NAME` |
+| OpenAI | `gpt-4o` | `OPENAI_API_KEY` |
+| Anthropic | `anthropic/claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
+| Azure OpenAI | `azure/gpt-4o` | `AZURE_API_KEY`, `AZURE_API_BASE` |
+| Google Gemini | `gemini/gemini-2.5-pro` | `GEMINI_API_KEY` |
+| Ollama (local) | `ollama/llama3` | Ollama running locally |
+
+Set the `model` field in your profile — harness-factory passes it directly to LiteLLM. Provider API keys are configured on the LiteLLM side, not in harness-factory.
+
 ## Requirements
 
 - Go 1.21+
