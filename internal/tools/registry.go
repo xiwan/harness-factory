@@ -84,6 +84,15 @@ func (r *Registry) ActiveTools(p *profile.Profile) []ToolDefinition {
 	return defs
 }
 
+// ActiveToolNames returns the list of activated tool function names for a profile.
+func (r *Registry) ActiveToolNames(p *profile.Profile) []string {
+	var names []string
+	for _, d := range r.ActiveTools(p) {
+		names = append(names, d.Function.Name)
+	}
+	return names
+}
+
 // Execute runs a tool call. toolName is like "fs_read".
 func (r *Registry) Execute(toolName string, params json.RawMessage, cwd string) (string, error) {
 	// Parse "fs_read" → tool="fs", op="read"

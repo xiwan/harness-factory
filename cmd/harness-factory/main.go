@@ -15,7 +15,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.4.0"
+var version = "0.4.1"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -29,6 +29,7 @@ func main() {
 
 	// Parse flags
 	var profileName, profilesDir string
+	var dryRun bool
 	for i, arg := range os.Args[1:] {
 		if arg == "--profile" && i+1 < len(os.Args)-1 {
 			profileName = os.Args[i+2]
@@ -36,6 +37,34 @@ func main() {
 		if arg == "--profiles-dir" && i+1 < len(os.Args)-1 {
 			profilesDir = os.Args[i+2]
 		}
+		if arg == "--dry-run" {
+			dryRun = true
+		}
+	}
+
+	// --dry-run: show what would be assembled, then exit
+	if dryRun {
+		name := profileName
+		if name == "" {
+			name = "default"
+		}
+		p := profile.GetBuiltin(name, profilesDir)
+		reg := tools.NewRegistry()
+		activated := reg.ActiveToolNames(&p)
+		out := map[string]any{
+			"profile":   name,
+			"tools":     activated,
+			"toolCount": len(activated),
+			"orchestration": p.Orchestration,
+			"resources": p.Resources,
+			"agent": map[string]any{
+				"model":       p.Agent.Model,
+				"temperature": p.Agent.Temperature,
+			},
+		}
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+		os.Exit(0)
 	}
 
 	logger.Init()
@@ -112,7 +141,14 @@ func main() {
 				logger.SetLevel(p.Resources.LogLevel)
 			}
 			logger.Infof("main", "session/new id=%s cwd=%s tools=%v", sessionID, params.CWD, toolNames(p))
-			transport.SendResult(req.ID, map[string]string{"sessionId": sessionID})
+			transport.SendResult(req.ID, map[string]any{
+				"sessionId": sessionID,
+				"activated": map[string]any{
+					"tools":         registry.ActiveToolNames(&p),
+					"toolCount":     len(registry.ActiveToolNames(&p)),
+					"orchestration": p.Orchestration,
+				},
+			})
 
 		case "session/prompt":
 			if currentAgent == nil {
