@@ -20,7 +20,7 @@
 # harness-factory
 
 [![Agent Guide](https://img.shields.io/badge/Agent_Guide-for_AI_Agents-blue?logo=robot)](AGENT.md)
-[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-green.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 Lightweight ACP agent harness — single Go binary (~6MB), profile-driven tool activation, zero external dependencies.
 
