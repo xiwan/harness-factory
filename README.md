@@ -51,6 +51,12 @@ make build
 # Version
 ./harness-factory --version
 
+# List built-in profiles
+./harness-factory --profiles
+
+# Run with a specific profile
+./harness-factory --profile pr-reviewer
+
 # Test (protocol only, no LiteLLM needed)
 make test
 
