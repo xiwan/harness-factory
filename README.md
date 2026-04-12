@@ -42,6 +42,20 @@ harness-factory (single binary, ~6MB)
 
 Same binary, different profiles → different agents (code reviewer, devops bot, research assistant).
 
+## Use Cases
+
+| Scenario | Profile | What it does |
+|----------|---------|-------------|
+| **PR Code Review** | `pr-reviewer` | Read diff + source, run linters, output structured review report |
+| **DevOps Automation** | `devops` | Execute docker/kubectl/terraform, manage infra, deploy services |
+| **Research Assistant** | `research` | Read codebases, fetch web content, summarize findings |
+| **CI/CD Agent** | custom | Run test suites, check coverage, generate reports, commit results |
+| **Security Audit** | custom | Scan code for vulnerabilities, check dependencies, produce audit report |
+| **Doc Generator** | custom | Read source code, generate/update API docs and READMEs |
+| **Incident Response** | custom | Check logs, run diagnostics, suggest fixes, execute remediation |
+
+Each scenario is just a different profile on the same ~6MB binary. No new code, no new deployment — add a profile in `config.yaml` and go.
+
 ## Quick Start
 
 ```bash
