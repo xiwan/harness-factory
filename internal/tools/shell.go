@@ -45,13 +45,36 @@ func (s *ShellTool) Execute(op string, params json.RawMessage, cwd string) (stri
 	return string(out), nil
 }
 
-// BaseCommand extracts the first word of a command string for allowlist checking.
+// ParseCommands splits a command string on &&, ||, ;, | and returns base command names.
+func ParseCommands(command string) []string {
+	// Split on shell operators
+	var cmds []string
+	for _, seg := range strings.FieldsFunc(command, func(r rune) bool {
+		return r == '&' || r == '|' || r == ';'
+	}) {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		fields := strings.Fields(seg)
+		if len(fields) == 0 {
+			continue
+		}
+		// Handle paths like /usr/bin/pytest → pytest
+		parts := strings.Split(fields[0], "/")
+		base := parts[len(parts)-1]
+		if base != "" {
+			cmds = append(cmds, base)
+		}
+	}
+	return cmds
+}
+
+// BaseCommand extracts the first command (backward compat).
 func BaseCommand(command string) string {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
+	cmds := ParseCommands(command)
+	if len(cmds) == 0 {
 		return ""
 	}
-	// Handle paths like /usr/bin/pytest → pytest
-	parts := strings.Split(fields[0], "/")
-	return parts[len(parts)-1]
+	return cmds[0]
 }

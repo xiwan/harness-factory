@@ -131,9 +131,10 @@ func (a *Agent) executeTool(tc llm.ToolCall) (string, error) {
 			Command string `json:"command"`
 		}
 		json.Unmarshal([]byte(tc.Function.Arguments), &p)
-		baseCmd := tools.BaseCommand(p.Command)
-		if err := a.checker.Check("shell", baseCmd); err != nil {
-			return err.Error(), err
+		for _, cmd := range tools.ParseCommands(p.Command) {
+			if err := a.checker.Check("shell", cmd); err != nil {
+				return err.Error(), err
+			}
 		}
 	} else {
 		if err := a.checker.Check(toolName, ""); err != nil {
