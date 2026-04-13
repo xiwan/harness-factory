@@ -1,0 +1,18 @@
+# Quad tool: fs + git + shell + web (all permissions)
+tools:
+  fs:
+    permissions: [all]
+  git:
+    permissions: [all]
+  shell:
+    allowlist: []
+  web:
+    permissions: [all]
+orchestration: free
+resources:
+  timeout: 600s
+  max_turns: 50
+  log_level: info
+agent:
+  system_prompt: "You are an admin agent with full access to all tools. Confirm destructive operations before executing."
+  temperature: 0.3

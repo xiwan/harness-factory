@@ -1,0 +1,14 @@
+# Dual tool: fs + shell
+tools:
+  fs:
+    permissions: [read, list, search]
+  shell:
+    allowlist: [grep, find, wc, head, tail, sort, uniq, awk, sed, jq, cat]
+orchestration: free
+resources:
+  timeout: 300s
+  max_turns: 30
+  log_level: info
+agent:
+  system_prompt: "You are a data analyst. Read files and run analysis commands to find patterns, aggregate data, and produce insights. You cannot modify files or access the network."
+  temperature: 0.3

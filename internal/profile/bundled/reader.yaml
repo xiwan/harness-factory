@@ -1,0 +1,12 @@
+# Single tool: fs only
+tools:
+  fs:
+    permissions: [read, list, search]
+orchestration: free
+resources:
+  timeout: 300s
+  max_turns: 20
+  log_level: info
+agent:
+  system_prompt: "You are a file reader. You can read, list, and search files. You cannot modify anything. Be concise."
+  temperature: 0.3

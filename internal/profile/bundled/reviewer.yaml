@@ -1,0 +1,14 @@
+# Dual tool: fs + git
+tools:
+  fs:
+    permissions: [read, list]
+  git:
+    permissions: [diff, log, show]
+orchestration: free
+resources:
+  timeout: 300s
+  max_turns: 20
+  log_level: info
+agent:
+  system_prompt: "You are a code reviewer. Read source files and analyze git diffs. Produce structured reviews: summary, issues, suggestions. You cannot modify files or run commands."
+  temperature: 0.3

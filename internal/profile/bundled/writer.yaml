@@ -1,0 +1,16 @@
+# Triple tool: fs + git + web
+tools:
+  fs:
+    permissions: [read, write, list, search]
+  git:
+    permissions: [diff, log, show]
+  web:
+    permissions: [fetch]
+orchestration: free
+resources:
+  timeout: 300s
+  max_turns: 30
+  log_level: info
+agent:
+  system_prompt: "You are a technical writer. Read source code and git history, fetch reference material from the web, and write documentation. Be accurate and well-structured."
+  temperature: 0.3

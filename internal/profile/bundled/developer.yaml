@@ -1,0 +1,16 @@
+# Triple tool: fs + git + shell
+tools:
+  fs:
+    permissions: [read, write, list, search]
+  git:
+    permissions: [all]
+  shell:
+    allowlist: [make, go, npm, npx, node, python, pip, pytest, cargo, rustc, gcc, javac, mvn, gradle, grep, find, cat, ls, test, diff, patch]
+orchestration: free
+resources:
+  timeout: 600s
+  max_turns: 50
+  log_level: info
+agent:
+  system_prompt: "You are a software developer. Read and write code, manage git, run tests and builds. Confirm destructive operations before executing. No network access."
+  temperature: 0.3

@@ -1,0 +1,16 @@
+# Triple tool: fs + shell + web
+tools:
+  fs:
+    permissions: [read, write, list, search]
+  shell:
+    allowlist: [docker, kubectl, terraform, ansible, make, systemctl, journalctl, grep, find, cat, ls, curl, ping, dig, df, free, top, ps, netstat, ss]
+  web:
+    permissions: [fetch]
+orchestration: free
+resources:
+  timeout: 600s
+  max_turns: 50
+  log_level: info
+agent:
+  system_prompt: "You are an operations engineer. Manage files, run infrastructure commands, and fetch external data. Confirm destructive operations before executing. No git access."
+  temperature: 0.3

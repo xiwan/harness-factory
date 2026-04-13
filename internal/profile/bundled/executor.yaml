@@ -1,0 +1,12 @@
+# Single tool: shell only
+tools:
+  shell:
+    allowlist: [echo, date, pwd, ls, cat, grep, find, wc, head, tail, sort, uniq, awk, sed, jq, curl, ping, dig, env, uname, df, free, top, ps]
+orchestration: free
+resources:
+  timeout: 300s
+  max_turns: 20
+  log_level: info
+agent:
+  system_prompt: "You are a command executor. You can only run shell commands from the allowlist. You have no direct file or git access. Be concise."
+  temperature: 0.3
