@@ -42,7 +42,10 @@ func (f *FSTool) Execute(op string, params json.RawMessage, cwd string) (string,
 	if err := json.Unmarshal(params, &p); err != nil {
 		return "", err
 	}
-	abs := resolvePath(cwd, p.Path)
+	abs, err := safeResolvePath(cwd, p.Path)
+	if err != nil {
+		return "", err
+	}
 
 	switch op {
 	case "read":
@@ -82,6 +85,20 @@ func resolvePath(cwd, p string) string {
 		return p
 	}
 	return filepath.Join(cwd, p)
+}
+
+// safeResolvePath resolves a path and ensures it stays within cwd (jail).
+// Returns error if the resolved path escapes cwd.
+func safeResolvePath(cwd, p string) (string, error) {
+	abs := resolvePath(cwd, p)
+	// Clean both to normalize /../ etc.
+	cleaned := filepath.Clean(abs)
+	cwdClean := filepath.Clean(cwd)
+	// Must be within cwd or equal to cwd
+	if !strings.HasPrefix(cleaned, cwdClean+string(filepath.Separator)) && cleaned != cwdClean {
+		return "", fmt.Errorf("path %q escapes working directory", p)
+	}
+	return cleaned, nil
 }
 
 func searchFiles(dir, pattern string) (string, error) {

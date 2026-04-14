@@ -15,7 +15,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.6.0"
+var version = "0.6.1"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {

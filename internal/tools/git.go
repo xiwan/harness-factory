@@ -47,9 +47,17 @@ func (g *GitTool) Execute(op string, params json.RawMessage, cwd string) (string
 	case "status":
 		args = []string{"status", "--short"}
 	case "diff":
-		args = append([]string{"diff"}, splitArgs(p.Args)...)
+		extra, err := safeSplitArgs(p.Args)
+		if err != nil {
+			return "", err
+		}
+		args = append([]string{"diff"}, extra...)
 	case "log":
-		args = append([]string{"log"}, splitArgs(p.Args)...)
+		extra, err := safeSplitArgs(p.Args)
+		if err != nil {
+			return "", err
+		}
+		args = append([]string{"log"}, extra...)
 		if p.Args == "" {
 			args = append(args, "-20", "--oneline")
 		}
@@ -58,7 +66,11 @@ func (g *GitTool) Execute(op string, params json.RawMessage, cwd string) (string
 	case "commit":
 		args = []string{"commit", "-m", p.Message}
 	case "push":
-		args = append([]string{"push"}, splitArgs(p.Args)...)
+		extra, err := safeSplitArgs(p.Args)
+		if err != nil {
+			return "", err
+		}
+		args = append([]string{"push"}, extra...)
 	default:
 		return "", fmt.Errorf("git: unknown op %s", op)
 	}
@@ -78,4 +90,24 @@ func splitArgs(s string) []string {
 		return nil
 	}
 	return strings.Fields(s)
+}
+
+// dangerousGitFlags that could enable code execution or exfiltration.
+var dangerousGitFlags = []string{
+	"--exec", "--upload-pack", "--receive-pack",
+	"--config", "-c", "--work-tree", "--git-dir",
+}
+
+// safeSplitArgs splits args and rejects dangerous git flags.
+func safeSplitArgs(s string) ([]string, error) {
+	args := splitArgs(s)
+	for _, a := range args {
+		lower := strings.ToLower(a)
+		for _, bad := range dangerousGitFlags {
+			if lower == bad || strings.HasPrefix(lower, bad+"=") {
+				return nil, fmt.Errorf("blocked git flag %q", a)
+			}
+		}
+	}
+	return args, nil
 }

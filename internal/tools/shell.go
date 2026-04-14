@@ -46,7 +46,17 @@ func (s *ShellTool) Execute(op string, params json.RawMessage, cwd string) (stri
 }
 
 // ParseCommands splits a command string on &&, ||, ;, | and returns base command names.
+// Also detects subcommand patterns that could bypass allowlist checks.
 func ParseCommands(command string) []string {
+	// Detect subcommand patterns that bypass simple splitting
+	subcommandPatterns := []string{"$(", "`", "<(", ">("}
+	for _, pat := range subcommandPatterns {
+		if strings.Contains(command, pat) {
+			// Return a sentinel that won't match any allowlist
+			return []string{"__subcommand_blocked__"}
+		}
+	}
+
 	// Split on shell operators
 	var cmds []string
 	for _, seg := range strings.FieldsFunc(command, func(r rune) bool {
