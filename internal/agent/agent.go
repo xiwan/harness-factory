@@ -88,6 +88,8 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 	}
 
 	triedModels := map[string]bool{}
+	toolCallCounts := map[string]int{} // loop detection: consecutive calls per tool
+	var lastToolName string
 
 	for turn := 0; turn < maxTurns; turn++ {
 		logger.Debugf("agent", "turn %d/%d calling LLM model=%s", turn+1, maxTurns, a.profile.Agent.Model)
@@ -122,6 +124,18 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 		}
 
 		choice := resp.Choices[0]
+
+		// Feedback loop: retry on empty response (up to 2 retries)
+		text, _ := choice.Message.Content.(string)
+		if len(choice.Message.ToolCalls) == 0 && strings.TrimSpace(text) == "" {
+			if turn < maxTurns-1 {
+				logger.Infof("agent", "turn %d: empty reply, retrying", turn+1)
+				messages = append(messages, choice.Message)
+				messages = append(messages, llm.Message{Role: "user", Content: "Your response was empty. Please try again."})
+				continue
+			}
+		}
+
 		messages = append(messages, choice.Message)
 
 		// No tool calls → done
@@ -134,6 +148,20 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 		// Execute tool calls
 		for _, tc := range choice.Message.ToolCalls {
+			// Constraint: loop detection — same tool called 5+ times consecutively
+			const maxConsecutive = 5
+			if tc.Function.Name == lastToolName {
+				toolCallCounts[tc.Function.Name]++
+			} else {
+				toolCallCounts = map[string]int{tc.Function.Name: 1}
+				lastToolName = tc.Function.Name
+			}
+			if toolCallCounts[tc.Function.Name] >= maxConsecutive {
+				logger.Infof("agent", "loop detected: %s called %d times consecutively", tc.Function.Name, toolCallCounts[tc.Function.Name])
+				a.transport.SendTextChunk(a.sessionID, fmt.Sprintf("[loop detected: %s called %d times, stopping]", tc.Function.Name, toolCallCounts[tc.Function.Name]))
+				return messages, "loop_detected", nil
+			}
+
 			logger.Infof("agent", "turn %d: tool call %s (id=%s)", turn+1, tc.Function.Name, tc.ID)
 			a.transport.SendToolCall(a.sessionID, tc.ID, tc.Function.Name)
 
