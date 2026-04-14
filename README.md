@@ -24,6 +24,16 @@
 
 Lightweight ACP agent harness — single Go binary (~6MB), profile-driven tool activation, zero external dependencies.
 
+## Why Harness Factory?
+
+|      | OpenClaw 子进程  | Bridge 常驻 Agent | Harness Factory |
+| ---- | ------------- | --------------- | --------------- |
+| 类比   | 让同事帮忙干个活      | 招全职员工           | 请外包顾问           |
+| 权限   | 继承父权限，没法限制    | 完整独立权限          | **preset 精确控制**     |
+| 协作   | 手动编排          | pipeline 原生     | pipeline 原生     |
+| 资源   | 共享进程          | 常驻占资源           | **用完释放**            |
+| 角色定制 | system prompt | 固定角色            | **prompt + preset** |
+
 ## Architecture
 
 ```
