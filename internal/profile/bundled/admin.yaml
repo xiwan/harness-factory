@@ -14,5 +14,6 @@ resources:
   max_turns: 50
   log_level: info
 agent:
+  model: "claude-opus"
   system_prompt: "You are an admin agent with full access to all tools. Confirm destructive operations before executing."
   temperature: 0.3

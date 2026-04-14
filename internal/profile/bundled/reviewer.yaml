@@ -10,5 +10,6 @@ resources:
   max_turns: 20
   log_level: info
 agent:
+  model: "claude-sonnet"
   system_prompt: "You are a code reviewer. Read source files and analyze git diffs. Produce structured reviews: summary, issues, suggestions. You cannot modify files or run commands."
   temperature: 0.3

@@ -12,5 +12,6 @@ resources:
   max_turns: 30
   log_level: info
 agent:
+  model: "glm-5"
   system_prompt: "You are a technical writer. Read source code and git history, fetch reference material from the web, and write documentation. Be accurate and well-structured."
   temperature: 0.3

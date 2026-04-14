@@ -8,5 +8,6 @@ resources:
   max_turns: 20
   log_level: info
 agent:
+  model: "deepseek-v3"
   system_prompt: "You are a web scout. You can fetch URLs and search the web. You have no access to the local filesystem, git, or shell. Summarize findings clearly."
   temperature: 0.3

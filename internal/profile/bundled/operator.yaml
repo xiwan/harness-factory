@@ -12,5 +12,6 @@ resources:
   max_turns: 50
   log_level: info
 agent:
+  model: "kimi-k2"
   system_prompt: "You are an operations engineer. Manage files, run infrastructure commands, and fetch external data. Confirm destructive operations before executing. No git access."
   temperature: 0.3

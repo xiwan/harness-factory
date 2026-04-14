@@ -58,7 +58,9 @@ Binary exists + tests pass?
 |---|---|---|
 | `LITELLM_API_KEY` | `NOT_SET` | `sk-litellm-bedrock` |
 | LiteLLM URL | Not default | `http://localhost:4000` |
-| Model name | Custom model | `bedrock/anthropic.claude-sonnet-4-6` |
+| Model name | Custom model | `claude-haiku` or `bedrock/anthropic.claude-sonnet-4-6` |
+
+> Model can be an alias (`claude-haiku`), full LiteLLM ID, or `auto` (default — random pick with fallback).
 
 ---
 
@@ -109,7 +111,7 @@ agents:
         timeout: 300s
         max_turns: 20
       agent:
-        model: "bedrock/anthropic.claude-sonnet-4-6"
+        model: "claude-sonnet"
         system_prompt: |
           You are a code reviewer. Analyze the diff, read relevant files,
           run linters if needed, and produce a structured review report.
@@ -146,7 +148,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./harness-fa
 
 Expected:
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"harness-factory","version":"0.3.0"},"capabilities":{}}}
+{"jsonrpc":"2.0","id":1,"result":{"agentInfo":{"name":"harness-factory","version":"0.6.0"},"capabilities":{}}}
 ```
 
 ---
@@ -180,7 +182,7 @@ Expected:
     "orchestration": "free",
     "resources": { "timeout": "300s", "max_turns": 20, "log_level": "info" },
     "agent": {
-      "model": "bedrock/anthropic.claude-sonnet-4-6",
+      "model": "claude-sonnet",
       "system_prompt": "You are a ...",
       "temperature": 0.3
     },
@@ -257,7 +259,7 @@ resources:
   log_level: info                         # debug | info | error
 
 agent:
-  model: "bedrock/anthropic.claude-sonnet-4-6"  # LiteLLM model name
+  model: "claude-sonnet"                  # alias, full LiteLLM ID, or "auto" (default)
   system_prompt: "You are a ..."          # system prompt for LLM
   temperature: 0.3                        # LLM temperature (0.0 - 1.0)
 
@@ -298,7 +300,7 @@ litellm_api_key: "sk-..."                # injected by Bridge
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model` | string | yes | LiteLLM model name (e.g. `bedrock/anthropic.claude-sonnet-4-6`) |
+| `model` | string | no | Model alias (`claude-haiku`), full LiteLLM model ID, or `auto` (default — random pick with auto-fallback) |
 | `system_prompt` | string | yes | System prompt injected into every LLM call |
 | `temperature` | float | no | LLM temperature, default `0` |
 
@@ -330,6 +332,7 @@ harness-factory --[litellm_api_key]--> LiteLLM proxy --[provider keys]--> Bedroc
 | `cmd/harness-factory/main.go` | Entry point, ACP JSON-RPC loop |
 | `internal/acp/acp.go` | stdin/stdout JSON-RPC transport |
 | `internal/profile/profile.go` | Profile struct + permission queries |
+| `internal/profile/models.go` | Built-in model registry (alias → LiteLLM model ID) |
 | `internal/permission/permission.go` | Runtime permission checker |
 | `internal/tools/registry.go` | Tool registry + activation filter |
 | `internal/tools/fs.go` | File system operations |

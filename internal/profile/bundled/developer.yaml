@@ -12,5 +12,6 @@ resources:
   max_turns: 50
   log_level: info
 agent:
+  model: "claude-sonnet"
   system_prompt: "You are a software developer. Read and write code, manage git, run tests and builds. Confirm destructive operations before executing. No network access."
   temperature: 0.3

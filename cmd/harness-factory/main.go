@@ -15,7 +15,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.5.0"
+var version = "0.6.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -26,9 +26,17 @@ func main() {
 		fmt.Println("Built-in profiles:", strings.Join(profile.BuiltinNames(), ", "))
 		os.Exit(0)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--models" {
+		fmt.Println("Built-in models (alias → model_id):")
+		for _, m := range profile.BuiltinModels {
+			fmt.Printf("  %-18s %s  (%s — %s)\n", m.Alias, m.ModelID, m.Provider, m.Desc)
+		}
+		fmt.Println("\nUse \"auto\" (default) for random selection with auto-fallback.")
+		os.Exit(0)
+	}
 
 	// Parse flags
-	var profileName, profilesDir string
+	var profileName, profilesDir, modelFlag string
 	var dryRun bool
 	for i, arg := range os.Args[1:] {
 		if arg == "--profile" && i+1 < len(os.Args)-1 {
@@ -36,6 +44,9 @@ func main() {
 		}
 		if arg == "--profiles-dir" && i+1 < len(os.Args)-1 {
 			profilesDir = os.Args[i+2]
+		}
+		if arg == "--model" && i+1 < len(os.Args)-1 {
+			modelFlag = os.Args[i+2]
 		}
 		if arg == "--dry-run" {
 			dryRun = true
@@ -51,6 +62,14 @@ func main() {
 		p := profile.GetBuiltin(name, profilesDir)
 		reg := tools.NewRegistry()
 		activated := reg.ActiveToolNames(&p)
+		modelRaw := p.Agent.Model
+		if modelFlag != "" {
+			modelRaw = modelFlag
+		}
+		if modelRaw == "" {
+			modelRaw = "auto"
+		}
+		resolved := profile.ResolveModel(modelRaw)
 		out := map[string]any{
 			"profile":   name,
 			"tools":     activated,
@@ -58,8 +77,9 @@ func main() {
 			"orchestration": p.Orchestration,
 			"resources": p.Resources,
 			"agent": map[string]any{
-				"model":       p.Agent.Model,
-				"temperature": p.Agent.Temperature,
+				"model":          modelRaw,
+				"model_resolved": resolved,
+				"temperature":    p.Agent.Temperature,
 			},
 		}
 		b, _ := json.MarshalIndent(out, "", "  ")
@@ -136,6 +156,14 @@ func main() {
 			}
 			sessionID = fmt.Sprintf("sess_%d", os.Getpid())
 			history = nil
+			// Apply --model flag (overrides profile default)
+			if modelFlag != "" {
+				p.Agent.Model = modelFlag
+			}
+			// Default to "auto" if still empty
+			if p.Agent.Model == "" {
+				p.Agent.Model = "auto"
+			}
 			currentAgent = agent.New(&p, registry, transport, params.CWD, sessionID)
 			if p.Resources.LogLevel != "" {
 				logger.SetLevel(p.Resources.LogLevel)

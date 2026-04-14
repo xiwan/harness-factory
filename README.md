@@ -73,8 +73,14 @@ make build
 # List built-in profiles
 ./harness-factory --profiles
 
+# List built-in models
+./harness-factory --models
+
 # Run with a specific profile
 ./harness-factory --profile pr-reviewer
+
+# Run with a specific model
+./harness-factory --profile reviewer --model claude-haiku
 
 # Test (protocol only, no LiteLLM needed)
 make test
@@ -203,6 +209,38 @@ harness-factory calls LLMs through [LiteLLM](https://docs.litellm.ai/) proxy —
 | Ollama (local) | `ollama/llama3` | Ollama running locally |
 
 Set the `model` field in your profile — harness-factory passes it directly to LiteLLM. Provider API keys are configured on the LiteLLM side, not in harness-factory.
+
+### Built-in Model Registry (Bedrock)
+
+7 representative Bedrock models built-in with alias support:
+
+| Alias | Model ID | Provider | Use case |
+|-------|----------|----------|----------|
+| `claude-sonnet` | `bedrock/anthropic.claude-sonnet-4-6` | Anthropic | Flagship, best tool-use |
+| `claude-opus` | `bedrock/anthropic.claude-opus-4-6-v1` | Anthropic | Most capable |
+| `deepseek-v3` | `bedrock/deepseek.v3.2` | DeepSeek | General purpose |
+| `kimi-k2` | `bedrock/converse/moonshotai.kimi-k2.5` | Moonshot | Multimodal reasoning |
+| `glm-5` | `bedrock/converse/zai.glm-5` | Zhipu | Agentic engineering |
+| `qwen3` | `bedrock/converse/qwen.qwen3-235b-a22b-2507-v1:0` | Qwen | Alibaba MoE flagship |
+| `minimax-m2` | `bedrock/converse/minimax.minimax-m2.5` | MiniMax | Agent-native frontier |
+| `gemma-3` | `bedrock/converse/google.gemma-3-12b-it` | Google | Lightweight open model |
+
+Features:
+- **Auto-selection**: Default `auto` randomly picks a model from the registry
+- **Auto-fallback**: If a model fails, automatically tries the next one until all exhausted
+- **Natural language switch**: Say "use claude" or "换个模型" in your prompt to switch models mid-session
+- **Alias or full ID**: Use `claude-haiku` or pass any full LiteLLM model ID directly
+
+```bash
+# List built-in models
+./harness-factory --models
+
+# Use a specific model alias
+./harness-factory --profile reviewer --model claude-haiku
+
+# Auto-select (default)
+./harness-factory --profile reviewer
+```
 
 ## Requirements
 

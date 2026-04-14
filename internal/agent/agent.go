@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/xiwan/harness-factory/internal/acp"
 	"github.com/xiwan/harness-factory/internal/llm"
@@ -26,6 +27,10 @@ type Agent struct {
 }
 
 func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd, sessionID string) *Agent {
+	// Resolve model: alias/auto → actual model ID
+	p.Agent.Model = profile.ResolveModel(p.Agent.Model)
+	logger.Infof("agent", "model resolved to %s", p.Agent.Model)
+
 	// Resolve skills directory
 	skillsDir := p.Resources.SkillsDir
 	if skillsDir == "" {
@@ -54,6 +59,16 @@ func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd,
 
 // Run executes the agent loop for a single prompt.
 func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string, error) {
+	// Check for natural language model switch
+	if newModel := profile.MatchModelByText(prompt); newModel != "" {
+		if newModel != a.profile.Agent.Model {
+			old := a.profile.Agent.Model
+			a.profile.Agent.Model = newModel
+			logger.Infof("agent", "model switched: %s → %s", old, newModel)
+			a.transport.SendTextChunk(a.sessionID, fmt.Sprintf("[model switched to %s]", newModel))
+		}
+	}
+
 	messages := make([]llm.Message, 0, len(history)+2)
 	sysPrompt := a.profile.Agent.SystemPrompt + a.skillsLoader.Metadata()
 	if sysPrompt != "" {
@@ -69,8 +84,10 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 		maxTurns = 20
 	}
 
+	triedModels := map[string]bool{}
+
 	for turn := 0; turn < maxTurns; turn++ {
-		logger.Debugf("agent", "turn %d/%d calling LLM", turn+1, maxTurns)
+		logger.Debugf("agent", "turn %d/%d calling LLM model=%s", turn+1, maxTurns, a.profile.Agent.Model)
 		req := &llm.ChatRequest{
 			Model:       a.profile.Agent.Model,
 			Messages:    messages,
@@ -82,8 +99,21 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 		resp, err := a.llmClient.Chat(req)
 		if err != nil {
-			return nil, "", fmt.Errorf("llm call failed: %w", err)
+			// Try fallback to next model
+			triedModels[a.profile.Agent.Model] = true
+			next := a.findFallback(triedModels)
+			if next == "" {
+				return nil, "", fmt.Errorf("llm call failed (all models exhausted): %w", err)
+			}
+			logger.Infof("agent", "model %s failed (%v), falling back to %s", a.profile.Agent.Model, err, next)
+			a.transport.SendTextChunk(a.sessionID, fmt.Sprintf("[model %s failed, switching to %s]", a.profile.Agent.Model, next))
+			a.profile.Agent.Model = next
+			turn-- // retry this turn with new model
+			continue
 		}
+		// Clear tried models on success
+		triedModels = map[string]bool{}
+
 		if len(resp.Choices) == 0 {
 			return nil, "", fmt.Errorf("llm returned no choices")
 		}
@@ -124,6 +154,19 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 	return messages, "max_turns", nil
 }
 
+// findFallback returns the next untried model, or "" if all exhausted.
+func (a *Agent) findFallback(tried map[string]bool) string {
+	// Walk the built-in list starting from current
+	next := profile.NextModel(a.profile.Agent.Model)
+	for i := 0; i < len(profile.BuiltinModels); i++ {
+		if !tried[next] {
+			return next
+		}
+		next = profile.NextModel(next)
+	}
+	return ""
+}
+
 func (a *Agent) executeTool(tc llm.ToolCall) (string, error) {
 	toolName := tc.Function.Name
 	if toolName == "shell_exec" {
@@ -147,4 +190,16 @@ func (a *Agent) executeTool(tc llm.ToolCall) (string, error) {
 		return err.Error(), err
 	}
 	return result, nil
+}
+
+// isModelSwitchRequest checks if the prompt is primarily a model switch request.
+func isModelSwitchRequest(prompt string) bool {
+	lower := strings.ToLower(prompt)
+	keywords := []string{"switch model", "change model", "use model", "换模型", "切换模型", "换个模型", "用模型"}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }

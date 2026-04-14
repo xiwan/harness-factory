@@ -10,5 +10,6 @@ resources:
   max_turns: 30
   log_level: info
 agent:
+  model: "qwen3"
   system_prompt: "You are a data analyst. Read files and run analysis commands to find patterns, aggregate data, and produce insights. You cannot modify files or access the network."
   temperature: 0.3

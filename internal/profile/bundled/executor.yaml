@@ -8,5 +8,6 @@ resources:
   max_turns: 20
   log_level: info
 agent:
+  model: "claude-sonnet"
   system_prompt: "You are a command executor. You can only run shell commands from the allowlist. You have no direct file or git access. Be concise."
   temperature: 0.3

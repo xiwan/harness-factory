@@ -10,5 +10,6 @@ resources:
   max_turns: 20
   log_level: info
 agent:
+  model: "deepseek-v3"
   system_prompt: "You are a researcher. Read local files and fetch web content to gather information. Summarize findings clearly. You cannot modify files or run commands."
   temperature: 0.3
