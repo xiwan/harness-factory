@@ -15,7 +15,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.6.2"
+var version = "0.7.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -126,6 +126,7 @@ func main() {
 		case "session/new":
 			var params struct {
 				CWD        string          `json:"cwd"`
+				Goal       string          `json:"goal"`
 				Profile    profile.Profile `json:"profile"`
 				MCPServers json.RawMessage `json:"mcpServers"`
 			}
@@ -164,7 +165,7 @@ func main() {
 			if p.Agent.Model == "" {
 				p.Agent.Model = "auto"
 			}
-			currentAgent = agent.New(&p, registry, transport, params.CWD, sessionID)
+			currentAgent = agent.New(&p, registry, transport, params.CWD, sessionID, params.Goal)
 			if p.Resources.LogLevel != "" {
 				logger.SetLevel(p.Resources.LogLevel)
 			}

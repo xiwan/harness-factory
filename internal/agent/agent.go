@@ -22,11 +22,12 @@ type Agent struct {
 	llmClient    *llm.Client
 	transport    *acp.Transport
 	skillsLoader *skills.Loader
+	systemPrompt string
 	cwd          string
 	sessionID    string
 }
 
-func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd, sessionID string) *Agent {
+func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd, sessionID, goal string) *Agent {
 	// Resolve model: alias/auto → actual model ID
 	p.Agent.Model = profile.ResolveModel(p.Agent.Model)
 	logger.Infof("agent", "model resolved to %s", p.Agent.Model)
@@ -45,7 +46,7 @@ func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd,
 	}
 	sl.StartWatcher()
 
-	return &Agent{
+	a := &Agent{
 		profile:      p,
 		registry:     reg,
 		checker:      permission.NewChecker(p),
@@ -55,6 +56,9 @@ func New(p *profile.Profile, reg *tools.Registry, transport *acp.Transport, cwd,
 		cwd:          cwd,
 		sessionID:    sessionID,
 	}
+	a.systemPrompt = a.buildSystemPrompt(goal)
+	logger.Debugf("agent", "system prompt built (%d bytes)", len(a.systemPrompt))
+	return a
 }
 
 // Run executes the agent loop for a single prompt.
@@ -70,9 +74,8 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 	}
 
 	messages := make([]llm.Message, 0, len(history)+2)
-	sysPrompt := a.profile.Agent.SystemPrompt + a.skillsLoader.Metadata()
-	if sysPrompt != "" {
-		messages = append(messages, llm.Message{Role: "system", Content: sysPrompt})
+	if a.systemPrompt != "" {
+		messages = append(messages, llm.Message{Role: "system", Content: a.systemPrompt})
 	}
 	messages = append(messages, history...)
 	messages = append(messages, llm.Message{Role: "user", Content: prompt})
@@ -209,6 +212,54 @@ func isModelSwitchRequest(prompt string) bool {
 		}
 	}
 	return false
+}
+
+// buildSystemPrompt assembles a structured system prompt from profile, tools, cwd, skills, and goal.
+// Capped at maxSystemPrompt bytes to avoid wasting context window.
+func (a *Agent) buildSystemPrompt(goal string) string {
+	const maxSystemPrompt = 4 * 1024
+
+	var sb strings.Builder
+
+	// Section 1: Role (from profile, human-written)
+	if a.profile.Agent.SystemPrompt != "" {
+		sb.WriteString(a.profile.Agent.SystemPrompt)
+		sb.WriteString("\n\n")
+	}
+
+	// Section 2: Available tools (auto-generated from registry)
+	names := a.registry.ActiveToolNames(a.profile)
+	if len(names) > 0 {
+		sb.WriteString("Available tools: ")
+		sb.WriteString(strings.Join(names, ", "))
+		sb.WriteString("\n")
+	}
+
+	// Section 3: Working directory
+	if a.cwd != "" {
+		sb.WriteString("Working directory: ")
+		sb.WriteString(a.cwd)
+		sb.WriteString("\n")
+	}
+
+	// Section 4: Skills (dynamic)
+	meta := a.skillsLoader.Metadata()
+	if meta != "" {
+		sb.WriteString(meta)
+	}
+
+	// Section 5: Goal (optional, anchored at end for attention)
+	if goal != "" {
+		sb.WriteString("\nTask goal: ")
+		sb.WriteString(goal)
+		sb.WriteString("\n")
+	}
+
+	result := sb.String()
+	if len(result) > maxSystemPrompt {
+		result = result[:maxSystemPrompt] + "\n... (system prompt truncated)"
+	}
+	return result
 }
 
 // formatToolError returns a structured JSON error for LLM consumption.
