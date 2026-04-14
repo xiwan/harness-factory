@@ -136,9 +136,16 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 
 			result, execErr := a.executeTool(tc)
 
+			// Tool output truncation — prevent large outputs from exhausting context window
+			const maxToolOutput = 32 * 1024
+			if len(result) > maxToolOutput {
+				result = result[:maxToolOutput] + fmt.Sprintf("\n... (truncated, original %d bytes)", len(result))
+			}
+
 			status := "completed"
 			if execErr != nil {
 				status = "failed"
+				result = formatToolError(tc.Function.Name, result, execErr)
 				logger.Errorf("agent", "tool %s error: %v", tc.Function.Name, execErr)
 			}
 			a.transport.SendToolCallUpdate(a.sessionID, tc.ID, tc.Function.Name, status, result)
@@ -202,4 +209,17 @@ func isModelSwitchRequest(prompt string) bool {
 		}
 	}
 	return false
+}
+
+// formatToolError returns a structured JSON error for LLM consumption.
+func formatToolError(tool, detail string, err error) string {
+	retryable := strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "connection")
+	e := map[string]any{
+		"error":     err.Error(),
+		"tool":      tool,
+		"detail":    detail,
+		"retryable": retryable,
+	}
+	b, _ := json.Marshal(e)
+	return string(b)
 }
