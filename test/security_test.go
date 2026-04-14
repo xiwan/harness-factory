@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xiwan/harness-factory/internal/acp"
+	"github.com/xiwan/harness-factory/internal/agent"
+	"github.com/xiwan/harness-factory/internal/profile"
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
@@ -79,4 +82,48 @@ func TestShellSubcommandBypass(t *testing.T) {
 	if len(cmds) != 2 || cmds[0] != "pytest" || cmds[1] != "echo" {
 		t.Errorf("normal command should parse correctly, got: %v", cmds)
 	}
+}
+
+func TestSystemPromptGeneration(t *testing.T) {
+	p := &profile.Profile{
+		Tools: map[string]profile.ToolConfig{
+			"fs":  {Permissions: []string{"read", "list"}},
+			"git": {Permissions: []string{"diff", "log", "show"}},
+		},
+		Agent: profile.AgentConfig{
+			Model:        "test",
+			SystemPrompt: "You are a code reviewer.",
+			Temperature:  0.3,
+		},
+	}
+	reg := tools.NewRegistry()
+	tr := acp.NewTransport(strings.NewReader(""), os.Stdout)
+
+	a := agent.New(p, reg, tr, "/workspace/project", "test-sess", "Review PR #42")
+	prompt := a.SystemPrompt()
+
+	t.Logf("=== Generated System Prompt ===\n%s", prompt)
+
+	// Verify sections
+	if !strings.Contains(prompt, "You are a code reviewer.") {
+		t.Error("missing role section")
+	}
+	if !strings.Contains(prompt, "fs_read") || !strings.Contains(prompt, "git_diff") {
+		t.Error("missing tool names")
+	}
+	if !strings.Contains(prompt, "/workspace/project") {
+		t.Error("missing cwd")
+	}
+	if !strings.Contains(prompt, "Review PR #42") {
+		t.Error("missing goal")
+	}
+
+	// Without goal
+	a2 := agent.New(p, reg, tr, "/tmp", "test-sess2", "")
+	prompt2 := a2.SystemPrompt()
+	if strings.Contains(prompt2, "Task goal") {
+		t.Error("goal section should be absent when goal is empty")
+	}
+
+	t.Logf("=== Without Goal ===\n%s", prompt2)
 }

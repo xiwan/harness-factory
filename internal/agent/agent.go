@@ -215,6 +215,11 @@ func isModelSwitchRequest(prompt string) bool {
 }
 
 // buildSystemPrompt assembles a structured system prompt from profile, tools, cwd, skills, and goal.
+
+// SystemPrompt returns the pre-built system prompt (for testing/inspection).
+func (a *Agent) SystemPrompt() string { return a.systemPrompt }
+
+// buildSystemPrompt assembles a structured system prompt from profile, tools, cwd, skills, and goal.
 // Capped at maxSystemPrompt bytes to avoid wasting context window.
 func (a *Agent) buildSystemPrompt(goal string) string {
 	const maxSystemPrompt = 4 * 1024
