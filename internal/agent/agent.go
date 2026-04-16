@@ -230,20 +230,6 @@ func (a *Agent) executeTool(tc llm.ToolCall) (string, error) {
 	return result, nil
 }
 
-// isModelSwitchRequest checks if the prompt is primarily a model switch request.
-func isModelSwitchRequest(prompt string) bool {
-	lower := strings.ToLower(prompt)
-	keywords := []string{"switch model", "change model", "use model", "换模型", "切换模型", "换个模型", "用模型"}
-	for _, kw := range keywords {
-		if strings.Contains(lower, kw) {
-			return true
-		}
-	}
-	return false
-}
-
-// buildSystemPrompt assembles a structured system prompt from profile, tools, cwd, skills, and goal.
-
 // SystemPrompt returns the pre-built system prompt (for testing/inspection).
 func (a *Agent) SystemPrompt() string { return a.systemPrompt }
 

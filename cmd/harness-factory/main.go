@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -15,18 +16,27 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.7.1"
+var version = "0.7.2"
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
+	showVersion := flag.Bool("version", false, "Print version")
+	showProfiles := flag.Bool("profiles", false, "List built-in profiles")
+	showModels := flag.Bool("models", false, "List built-in models")
+	profileName := flag.String("profile", "", "Profile name")
+	profilesDir := flag.String("profiles-dir", "", "External profiles directory")
+	modelFlag := flag.String("model", "", "Model alias or full ID")
+	dryRun := flag.Bool("dry-run", false, "Show assembled config and exit")
+	flag.Parse()
+
+	if *showVersion {
 		fmt.Println(version)
 		os.Exit(0)
 	}
-	if len(os.Args) > 1 && os.Args[1] == "--profiles" {
+	if *showProfiles {
 		fmt.Println("Built-in profiles:", strings.Join(profile.BuiltinNames(), ", "))
 		os.Exit(0)
 	}
-	if len(os.Args) > 1 && os.Args[1] == "--models" {
+	if *showModels {
 		fmt.Println("Built-in models (alias → model_id):")
 		for _, m := range profile.BuiltinModels {
 			fmt.Printf("  %-18s %s  (%s — %s)\n", m.Alias, m.ModelID, m.Provider, m.Desc)
@@ -35,36 +45,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Parse flags
-	var profileName, profilesDir, modelFlag string
-	var dryRun bool
-	for i, arg := range os.Args[1:] {
-		if arg == "--profile" && i+1 < len(os.Args)-1 {
-			profileName = os.Args[i+2]
-		}
-		if arg == "--profiles-dir" && i+1 < len(os.Args)-1 {
-			profilesDir = os.Args[i+2]
-		}
-		if arg == "--model" && i+1 < len(os.Args)-1 {
-			modelFlag = os.Args[i+2]
-		}
-		if arg == "--dry-run" {
-			dryRun = true
-		}
-	}
-
 	// --dry-run: show what would be assembled, then exit
-	if dryRun {
-		name := profileName
+	if *dryRun {
+		name := *profileName
 		if name == "" {
 			name = "default"
 		}
-		p := profile.GetBuiltin(name, profilesDir)
+		p := profile.GetBuiltin(name, *profilesDir)
 		reg := tools.NewRegistry()
 		activated := reg.ActiveToolNames(&p)
 		modelRaw := p.Agent.Model
-		if modelFlag != "" {
-			modelRaw = modelFlag
+		if *modelFlag != "" {
+			modelRaw = *modelFlag
 		}
 		if modelRaw == "" {
 			modelRaw = "auto"
@@ -137,11 +129,11 @@ func main() {
 			// Resolve profile: explicit > --profile flag > default
 			p := params.Profile
 			if len(p.Tools) == 0 {
-				if profileName != "" {
-					p = profile.GetBuiltin(profileName, profilesDir)
-					logger.Infof("main", "using --profile %s", profileName)
+				if *profileName != "" {
+					p = profile.GetBuiltin(*profileName, *profilesDir)
+					logger.Infof("main", "using --profile %s", *profileName)
 				} else {
-					p = profile.GetBuiltin("default", profilesDir)
+					p = profile.GetBuiltin("default", *profilesDir)
 					logger.Info("main", "no profile provided, using default")
 				}
 				// Preserve litellm config from params if set
@@ -158,8 +150,8 @@ func main() {
 			sessionID = fmt.Sprintf("sess_%d", os.Getpid())
 			history = nil
 			// Apply --model flag (overrides profile default)
-			if modelFlag != "" {
-				p.Agent.Model = modelFlag
+			if *modelFlag != "" {
+				p.Agent.Model = *modelFlag
 			}
 			// Default to "auto" if still empty
 			if p.Agent.Model == "" {
