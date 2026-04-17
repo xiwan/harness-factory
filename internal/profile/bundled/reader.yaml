@@ -10,6 +10,6 @@ resources:
   max_turns: 20
   log_level: info
 agent:
-  model: "claude-sonnet"
+  model: "claude-haiku"
   system_prompt: "You are a file reader. You can read, list, and search files. You cannot modify anything. Be concise."
   temperature: 0.3

@@ -16,7 +16,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.9.1"
+var version = "0.9.2"
 
 func main() {
 	showVersion := flag.Bool("version", false, "Print version")

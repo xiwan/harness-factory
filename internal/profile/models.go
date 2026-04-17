@@ -22,7 +22,7 @@ var BuiltinModels = []ModelEntry{
 	{"glm-5", "bedrock/converse/zai.glm-5", "Zhipu", "Agentic engineering"},
 	{"qwen3", "bedrock/converse/qwen.qwen3-235b-a22b-2507-v1:0", "Qwen", "Alibaba MoE flagship"},
 	{"minimax-m2", "bedrock/converse/minimax.minimax-m2.5", "MiniMax", "Agent-native frontier"},
-	{"gemma-3", "bedrock/converse/google.gemma-3-12b-it", "Google", "Lightweight open model"},
+	{"claude-haiku", "bedrock/anthropic.claude-haiku-4-5-20251001-v1:0", "Anthropic", "Fast and cheap, reliable tool-use"},
 }
 
 // ResolveModel resolves a model string: alias → model ID, "auto"/empty → random pick.
