@@ -4,6 +4,8 @@ tools:
     permissions: [read, list, search]
   shell:
     allowlist: [grep, find, wc, head, tail, sort, uniq, awk, sed, jq, cat]
+  artifact:
+    permissions: [all]
 orchestration: free
 resources:
   timeout: 300s

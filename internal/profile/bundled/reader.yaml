@@ -2,6 +2,8 @@
 tools:
   fs:
     permissions: [read, list, search]
+  artifact:
+    permissions: [all]
 orchestration: free
 resources:
   timeout: 300s

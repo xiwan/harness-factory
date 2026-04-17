@@ -4,6 +4,8 @@ tools:
     permissions: [read, list]
   git:
     permissions: [diff, log, show]
+  artifact:
+    permissions: [all]
 orchestration: free
 resources:
   timeout: 300s

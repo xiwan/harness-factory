@@ -38,10 +38,11 @@ acp-bridge (HTTP)
     ▼
 harness-factory (single binary, ~6MB)
     │
-    ├── fs    — read, write, list, search
-    ├── git   — status, diff, log, show, commit, push
-    ├── shell — exec (allowlist/blocklist)
-    └── web   — fetch
+    ├── fs       — read, write, list, search
+    ├── git      — status, diff, log, show, commit, push
+    ├── shell    — exec (allowlist/blocklist)
+    ├── web      — fetch
+    └── artifact — write, read, list (sandboxed `outputs/` for inter-agent exchange)
 ```
 
 Same binary, different profiles → different agents (code reviewer, devops bot, research assistant).
@@ -63,7 +64,24 @@ Same binary, different profiles → different agents (code reviewer, devops bot,
 | `operator` | R/W | — | infra tools | F | Operations and infrastructure |
 | `admin` | ALL | ALL | ALL | ALL | Full unrestricted access |
 
+**`artifact` tool** is additionally activated on the five read-only-leaning profiles (`reader`, `scout`, `reviewer`, `analyst`, `researcher`) so they can hand data to downstream agents without gaining full `fs.write`. See [Artifact tool](#artifact-tool-inter-agent-exchange) below.
+
 Each scenario is just a different profile on the same ~6MB binary. No new code, no new deployment — add a profile in `config.yaml` and go.
+
+### Artifact tool (inter-agent exchange)
+
+Profiles without `fs.write` can still produce output for the next agent in a pipeline via the `artifact` tool. It writes into a sandboxed `<cwd>/outputs/` directory with a tighter safety envelope than free-form `fs.write`:
+
+| Guard | Limit |
+|-------|-------|
+| API shape | LLM supplies `name` only — never `path`; the `outputs/` prefix is fixed in code |
+| Filename | `^[a-zA-Z0-9._-]+$`, no `..`, no slash/backslash, no absolute path |
+| Extension whitelist | `.md .txt .json .yaml .yml .csv .log .html` (data, never scripts) |
+| Per file | ≤ 1 MiB |
+| Per process | ≤ 100 files |
+| On disk | `O_NOFOLLOW` (blocks symlink escape), mode `0600` |
+
+Lifecycle of `outputs/` is the **caller's** responsibility — harness-factory never cleans it up. Bridges running a pipeline should either point each session at a shared `cwd` to stitch stages together, or tear down per-session scratch directories themselves.
 
 ## Quick Start
 

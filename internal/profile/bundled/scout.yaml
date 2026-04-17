@@ -2,6 +2,8 @@
 tools:
   web:
     permissions: [fetch, search]
+  artifact:
+    permissions: [all]
 orchestration: free
 resources:
   timeout: 300s

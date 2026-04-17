@@ -48,7 +48,7 @@ type Registry struct {
 func NewRegistry() *Registry {
 	r := &Registry{all: make(map[string]Tool)}
 	// Register all core tools
-	for _, t := range []Tool{NewFSTool(), NewGitTool(), NewShellTool(), NewWebTool()} {
+	for _, t := range []Tool{NewFSTool(), NewGitTool(), NewShellTool(), NewWebTool(), NewArtifactTool()} {
 		r.all[t.Name()] = t
 	}
 	return r
@@ -63,8 +63,8 @@ func (r *Registry) ActiveTools(p *profile.Profile) []ToolDefinition {
 		}
 		for _, op := range tool.Operations() {
 			// Filter by permission
-			if name == "shell" {
-				// Shell always exposes exec if activated
+			if name == "shell" || name == "artifact" {
+				// Activation-only tools: if profile activates them, expose all ops.
 			} else if !p.HasPermission(name, op.Name) {
 				continue
 			}
