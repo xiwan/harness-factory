@@ -68,8 +68,9 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 		if newModel != a.profile.Agent.Model {
 			old := a.profile.Agent.Model
 			a.profile.Agent.Model = newModel
-			logger.Infof("agent", "model switched: %s → %s", old, newModel)
+			logger.Infof("agent", "[MODEL_RESOLVED] model=%s reason=user_switch prev=%s", newModel, old)
 			a.transport.SendTextChunk(a.sessionID, fmt.Sprintf("[model switched to %s]", newModel))
+			a.transport.SendModelResolved(a.sessionID, newModel, "user_switch")
 		}
 	}
 
@@ -110,8 +111,9 @@ func (a *Agent) Run(prompt string, history []llm.Message) ([]llm.Message, string
 			if next == "" {
 				return nil, "", fmt.Errorf("llm call failed (all models exhausted): %w", err)
 			}
-			logger.Infof("agent", "model %s failed (%v), falling back to %s", a.profile.Agent.Model, err, next)
+			logger.Infof("agent", "[MODEL_RESOLVED] model=%s reason=fallback prev=%s err=%v", next, a.profile.Agent.Model, err)
 			a.transport.SendTextChunk(a.sessionID, fmt.Sprintf("[model %s failed, switching to %s]", a.profile.Agent.Model, next))
+			a.transport.SendModelResolved(a.sessionID, next, "fallback")
 			a.profile.Agent.Model = next
 			turn-- // retry this turn with new model
 			continue

@@ -88,3 +88,63 @@ func TestPromptWithoutSession(t *testing.T) {
 		t.Error("expected error when prompting without session")
 	}
 }
+
+// TestSessionNewResolvedModel verifies R1/R3 — session/new response exposes resolvedModel,
+// alias is expanded to full ID, full ID passes through unchanged, auto picks a registry model.
+func TestSessionNewResolvedModel(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		expect   string // empty = just assert non-empty and bedrock/ prefix
+		contains string
+	}{
+		{
+			name:   "alias expanded to full id",
+			input:  `{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp","profile":{"tools":{"fs":{"permissions":["read"]}},"agent":{"model":"claude-sonnet"}}}}`,
+			expect: "bedrock/anthropic.claude-sonnet-4-6",
+		},
+		{
+			name:   "full id passthrough",
+			input:  `{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp","profile":{"tools":{"fs":{"permissions":["read"]}},"agent":{"model":"bedrock/custom-model-xyz"}}}}`,
+			expect: "bedrock/custom-model-xyz",
+		},
+		{
+			name:     "auto picks from registry",
+			input:    `{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp","profile":{"tools":{"fs":{"permissions":["read"]}},"agent":{"model":"auto"}}}}`,
+			contains: "bedrock/",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("go", "run", "../cmd/harness-factory")
+			cmd.Stdin = strings.NewReader(tc.input)
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var resp map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &resp); err != nil {
+				t.Fatalf("parse response: %v\n%s", err, out)
+			}
+			result, ok := resp["result"].(map[string]any)
+			if !ok {
+				t.Fatalf("no result: %v", resp)
+			}
+			activated, ok := result["activated"].(map[string]any)
+			if !ok {
+				t.Fatalf("no activated: %v", result)
+			}
+			got, _ := activated["resolvedModel"].(string)
+			if got == "" {
+				t.Fatalf("resolvedModel empty: %v", activated)
+			}
+			if tc.expect != "" && got != tc.expect {
+				t.Errorf("resolvedModel = %q, want %q", got, tc.expect)
+			}
+			if tc.contains != "" && !strings.Contains(got, tc.contains) {
+				t.Errorf("resolvedModel = %q, want contains %q", got, tc.contains)
+			}
+		})
+	}
+}

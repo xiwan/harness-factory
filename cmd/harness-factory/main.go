@@ -16,7 +16,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.7.2"
+var version = "0.8.0"
 
 func main() {
 	showVersion := flag.Bool("version", false, "Print version")
@@ -157,6 +157,11 @@ func main() {
 			if p.Agent.Model == "" {
 				p.Agent.Model = "auto"
 			}
+			// Resolve model now so session/new response can expose the actual ID (R1/R3).
+			// ResolveModel is idempotent for full IDs, so agent.New can safely call it again.
+			resolvedModel := profile.ResolveModel(p.Agent.Model)
+			p.Agent.Model = resolvedModel
+			logger.Infof("main", "[MODEL_RESOLVED] model=%s profile=%s", resolvedModel, *profileName)
 			currentAgent = agent.New(&p, registry, transport, params.CWD, sessionID, params.Goal)
 			if p.Resources.LogLevel != "" {
 				logger.SetLevel(p.Resources.LogLevel)
@@ -168,6 +173,7 @@ func main() {
 					"tools":         registry.ActiveToolNames(&p),
 					"toolCount":     len(registry.ActiveToolNames(&p)),
 					"orchestration": p.Orchestration,
+					"resolvedModel": resolvedModel,
 				},
 			})
 

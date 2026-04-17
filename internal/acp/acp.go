@@ -104,6 +104,24 @@ func (t *Transport) SendTextChunk(sessionID, text string) error {
 	})
 }
 
+// SendModelResolved notifies the client that the active model has been resolved or changed
+// (e.g. auto-pick on session start, or fallback after a model failure).
+// Non-standard ACP extension — clients unaware of it will simply ignore the update.
+func (t *Transport) SendModelResolved(sessionID, model, reason string) error {
+	return t.write(&Notification{
+		JSONRPC: "2.0",
+		Method:  "session/update",
+		Params: sessionUpdateParams{
+			SessionID: sessionID,
+			Update: map[string]any{
+				"sessionUpdate": "model_resolved",
+				"model":         model,
+				"reason":        reason,
+			},
+		},
+	})
+}
+
 // SendToolCall sends a tool_call notification (status: running).
 func (t *Transport) SendToolCall(sessionID, toolCallID, title string) error {
 	return t.write(&Notification{

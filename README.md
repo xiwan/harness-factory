@@ -143,6 +143,47 @@ agents:
 
 Bridge injects `litellm_url` and `litellm_api_key` automatically.
 
+### Observing the resolved model
+
+`session/new` responds with the actual model ID selected for this session, so the client never has to guess what `auto` or an alias expanded to:
+
+```json
+{
+  "sessionId": "sess_1234",
+  "activated": {
+    "tools": ["fs_read", "git_diff"],
+    "toolCount": 2,
+    "orchestration": "free",
+    "resolvedModel": "bedrock/anthropic.claude-sonnet-4-6"
+  }
+}
+```
+
+- `auto` / empty → one of the registry models (randomly picked)
+- alias (e.g. `claude-sonnet`) → expanded to its full ID
+- full ID → passed through unchanged
+
+If a model fails mid-session and falls back to the next one, harness-factory emits a `session/update` notification so the client can track the change:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_1234",
+    "update": {
+      "sessionUpdate": "model_resolved",
+      "model": "bedrock/deepseek.v3.2",
+      "reason": "fallback"
+    }
+  }
+}
+```
+
+`reason` is one of: `fallback` (primary failed), `user_switch` (natural-language switch mid-prompt). Clients that don't recognise `model_resolved` simply ignore the update — the extension is backward-compatible.
+
+A mirrored stderr log is also emitted for scrapers: `[MODEL_RESOLVED] model=<id> reason=<...>`.
+
 ## Profile Example
 
 > Full profile reference with all fields, types, and valid values → [AGENT.md#profile-reference](AGENT.md#profile-reference)
