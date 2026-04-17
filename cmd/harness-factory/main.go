@@ -16,7 +16,7 @@ import (
 	"github.com/xiwan/harness-factory/internal/tools"
 )
 
-var version = "0.9.0"
+var version = "0.9.1"
 
 func main() {
 	showVersion := flag.Bool("version", false, "Print version")
@@ -126,27 +126,14 @@ func main() {
 				transport.SendError(req.ID, -32602, "invalid params: "+err.Error())
 				continue
 			}
-			// Resolve profile: explicit > --profile flag > default
-			p := params.Profile
-			if len(p.Tools) == 0 {
-				if *profileName != "" {
-					p = profile.GetBuiltin(*profileName, *profilesDir)
-					logger.Infof("main", "using --profile %s", *profileName)
-				} else {
-					p = profile.GetBuiltin("default", *profilesDir)
-					logger.Info("main", "no profile provided, using default")
-				}
-				// Preserve litellm config from params if set
-				if params.Profile.LiteLLMURL != "" {
-					p.LiteLLMURL = params.Profile.LiteLLMURL
-				}
-				if params.Profile.LiteLLMAPIKey != "" {
-					p.LiteLLMAPIKey = params.Profile.LiteLLMAPIKey
-				}
-				if params.Profile.Agent.Model != "" {
-					p.Agent.Model = params.Profile.Agent.Model
-				}
+			// Resolve profile: load builtin as base, merge caller's overrides on top
+			baseName := *profileName
+			if baseName == "" {
+				baseName = "default"
 			}
+			base := profile.GetBuiltin(baseName, *profilesDir)
+			p := profile.Merge(base, params.Profile)
+			logger.Infof("main", "profile base=%s merged", baseName)
 			sessionID = fmt.Sprintf("sess_%d", os.Getpid())
 			history = nil
 			// Apply --model flag (overrides profile default)

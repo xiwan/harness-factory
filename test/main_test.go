@@ -148,3 +148,49 @@ func TestSessionNewResolvedModel(t *testing.T) {
 		})
 	}
 }
+
+// TestPartialProfileMerge verifies that passing only agent fields in session/new
+// preserves the builtin profile's tools (the v0.9.1 fix).
+func TestPartialProfileMerge(t *testing.T) {
+	cases := []struct {
+		name         string
+		input        string
+		minToolCount float64
+	}{
+		{
+			name: "only agent override preserves builtin tools",
+			// Pass --profile developer via args; session/new only sends agent.system_prompt
+			input:        `{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp","profile":{"agent":{"system_prompt":"custom prompt"}}}}`,
+			minToolCount: 5,
+		},
+		{
+			name: "empty profile uses builtin defaults",
+			input:        `{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp","profile":{}}}`,
+			minToolCount: 5,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("go", "run", "../cmd/harness-factory", "--profile", "developer")
+			cmd.Stdin = strings.NewReader(tc.input)
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var resp map[string]any
+			json.Unmarshal([]byte(strings.TrimSpace(string(out))), &resp)
+			result := resp["result"].(map[string]any)
+			activated := result["activated"].(map[string]any)
+			toolCount, _ := activated["toolCount"].(float64)
+			if toolCount < tc.minToolCount {
+				t.Errorf("toolCount = %v, want >= %v (tools: %v)", toolCount, tc.minToolCount, activated["tools"])
+			}
+			// Verify model is developer default (claude-sonnet resolved), not "auto"
+			resolved, _ := activated["resolvedModel"].(string)
+			if tc.name == "empty profile uses builtin defaults" && !strings.Contains(resolved, "claude") {
+				t.Errorf("resolvedModel = %q, expected developer default (claude-sonnet)", resolved)
+			}
+		})
+	}
+}
