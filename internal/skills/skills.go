@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-//go:embed bundled/*/SKILL.md
+//go:embed bundled/*/SKILL.md bundled/*/scripts/* bundled/*/references/*
 var bundledFS embed.FS
 
 type Skill struct {
