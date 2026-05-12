@@ -158,7 +158,8 @@ func metadataFrom(skills map[string]*Skill) string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\nWhen a task matches a skill, read its SKILL.md with fs_read before proceeding.")
+	sb.WriteString("\nSkills are located under the `skills/` directory in your working directory.")
+	sb.WriteString("\nTo use a skill, read `skills/<name>/SKILL.md` with fs_read (relative path), then follow its instructions.")
 	return sb.String()
 }
 
