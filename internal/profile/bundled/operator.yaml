@@ -3,7 +3,7 @@ tools:
   fs:
     permissions: [read, write, list, search]
   shell:
-    allowlist: [docker, kubectl, terraform, ansible, make, systemctl, journalctl, grep, find, cat, ls, curl, ping, dig, df, free, top, ps, netstat, ss]
+    allowlist: [docker, kubectl, terraform, ansible, aws, make, systemctl, journalctl, grep, find, cat, ls, curl, ping, dig, df, free, top, ps, netstat, ss]
   web:
     permissions: [fetch]
 orchestration: free
