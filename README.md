@@ -270,8 +270,14 @@ harness-factory calls LLMs through [LiteLLM](https://docs.litellm.ai/) proxy —
 | Azure OpenAI | `azure/gpt-4o` | `AZURE_API_KEY`, `AZURE_API_BASE` |
 | Google Gemini | `gemini/gemini-2.5-pro` | `GEMINI_API_KEY` |
 | Ollama (local) | `ollama/llama3` | Ollama running locally |
+| Tuning Engines | `te/gpt-5.4-mini` | LiteLLM route with `api_base: https://api.tuningengines.com/v1` and a Tuning Engines inference key |
 
 Set the `model` field in your profile — harness-factory passes it directly to LiteLLM. Provider API keys are configured on the LiteLLM side, not in harness-factory.
+
+When routing through Tuning Engines, harness-factory still owns the ACP agent
+loop, profile permissions, tools, and artifact handoff. Tuning Engines adds
+centralized model access, tenant policy, traces, approvals, and usage reporting
+at the OpenAI-compatible endpoint that LiteLLM calls.
 
 ### Built-in Model Registry (Bedrock)
 
