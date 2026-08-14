@@ -86,6 +86,12 @@ cp .env.example .env
 # Edit .env with actual tokens
 ```
 
+Optional env vars:
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `HF_SHELL_TIMEOUT` | `60s` | Per-command kill timeout for `shell_exec` (Go duration, max 30m). Raise for long-running workloads, e.g. `300s` for `qa` profile playtest sessions. |
+
 ---
 
 ## Phase 4: Integration with acp-bridge (🤖 auto)

@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,10 +38,52 @@ func NewLoader(dir string) *Loader {
 	}
 	l.loadBundled()
 	if dir != "" {
+		Materialize(dir)
 		l.loadDir(dir)
 	}
 	l.hash = l.computeHash()
 	return l
+}
+
+// Materialize writes bundled skill files (SKILL.md, scripts/*, references/*) to dir
+// so the LLM can fs_read them and execute scripts via shell. A skill dir that
+// already exists on disk is left untouched (external skills override bundled).
+// Best-effort: errors are silently skipped, matching loader behavior.
+func Materialize(dir string) {
+	entries, err := bundledFS.ReadDir("bundled")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		target := filepath.Join(dir, e.Name())
+		if _, err := os.Stat(target); err == nil {
+			continue
+		}
+		src := "bundled/" + e.Name()
+		fs.WalkDir(bundledFS, src, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			rel := strings.TrimPrefix(p, src+"/")
+			dst := filepath.Join(target, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+				return nil
+			}
+			data, err := bundledFS.ReadFile(p)
+			if err != nil {
+				return nil
+			}
+			mode := os.FileMode(0644)
+			if strings.HasPrefix(rel, "scripts/") {
+				mode = 0755
+			}
+			os.WriteFile(dst, data, mode)
+			return nil
+		})
+	}
 }
 
 // StartWatcher polls the skills directory every 60s for changes.

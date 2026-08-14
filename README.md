@@ -49,7 +49,7 @@ Same binary, different profiles → different agents (code reviewer, devops bot,
 
 ## Built-in Profiles
 
-10 profiles designed from tool combination permutations (fs/git/shell/web):
+11 profiles designed from tool combination permutations (fs/git/shell/web):
 
 | Profile | fs | git | shell | web | Use case |
 |---------|-----|-----|-------|-----|----------|
@@ -62,6 +62,7 @@ Same binary, different profiles → different agents (code reviewer, devops bot,
 | `developer` | R/W | ALL | test+build | — | Software development |
 | `writer` | R/W | diff/log/show | — | F | Technical writing |
 | `operator` | R/W | — | infra tools | F | Operations and infrastructure |
+| `qa` | ALL | — | node+npm | F | Web game QA playtesting (via `game-qa` skill) |
 | `admin` | ALL | ALL | ALL | ALL | Full unrestricted access |
 
 **`artifact` tool** is additionally activated on the five read-only-leaning profiles (`reader`, `scout`, `reviewer`, `analyst`, `researcher`) so they can hand data to downstream agents without gaining full `fs.write`. See [Artifact tool](#artifact-tool-inter-agent-exchange) below.
@@ -309,6 +310,10 @@ Features:
 
 - Go 1.21+
 - LiteLLM running (for agent loop / e2e tests)
+
+Profile-specific runtime dependencies (not needed for the binary itself):
+
+- `qa` profile: Node.js ≥ 18 on the target machine. The bundled `game-qa` skill detects missing deps (`check-env.sh`) and installs playwright + chromium (`setup.sh`) only after informing the user. Set `HF_SHELL_TIMEOUT` (e.g. `300s`) for long playtest sessions; shell commands default to a 60s kill timeout.
 
 ## Changelog
 

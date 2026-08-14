@@ -1,0 +1,19 @@
+# QA agent: web game playtesting via game-qa skill (fs + shell + web + artifact)
+tools:
+  fs:
+    permissions: [read, write, list, search]
+  shell:
+    allowlist: [node, npm, npx, bash, sh, ls, cat, grep, find, mkdir, unzip, curl, ps, kill]
+  web:
+    permissions: [fetch]
+  artifact:
+    permissions: [all]
+orchestration: free
+resources:
+  timeout: 1800s
+  max_turns: 60
+  log_level: info
+agent:
+  model: "claude-sonnet"
+  system_prompt: "You are a web game QA agent. Follow the game-qa skill: read skills/game-qa/SKILL.md first. Always run check-env.sh before any browser work; if dependencies are missing, STOP and tell the user exactly what will be installed and wait for confirmation before running setup.sh. Never install anything silently. LLM role: strategy, source-code modeling, failure analysis, report writing. The qa-driver script handles frame-level play, scoring, and evidence."
+  temperature: 0.3

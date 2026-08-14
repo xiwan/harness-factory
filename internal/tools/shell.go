@@ -3,7 +3,9 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -35,7 +37,7 @@ func (s *ShellTool) Execute(op string, params json.RawMessage, cwd string) (stri
 	cmd := exec.Command("sh", "-c", p.Command)
 	cmd.Dir = cwd
 
-	timer := time.AfterFunc(60*time.Second, func() { cmd.Process.Kill() })
+	timer := time.AfterFunc(shellTimeout(), func() { cmd.Process.Kill() })
 	defer timer.Stop()
 
 	out, err := cmd.CombinedOutput()
@@ -44,6 +46,22 @@ func (s *ShellTool) Execute(op string, params json.RawMessage, cwd string) (stri
 	}
 	return string(out), nil
 }
+
+// shellTimeout returns the per-command kill timeout. Long-running workloads
+// (e.g. browser-driven QA sessions) can raise it via HF_SHELL_TIMEOUT
+// (Go duration, e.g. "300s"). Values outside (0, 30m] fall back to 60s.
+func shellTimeout() time.Duration {
+	if v := os.Getenv("HF_SHELL_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 && d <= 30*time.Minute {
+			return d
+		}
+	}
+	return 60 * time.Second
+}
+
+// fdRedirectRe matches fd-redirection tokens like "2>&1", ">&2", "&>" so they
+// are not mistaken for command separators when splitting on '&'.
+var fdRedirectRe = regexp.MustCompile(`[0-9]*>&[0-9]*|&>>?`)
 
 // ParseCommands splits a command string on &&, ||, ;, | and returns base command names.
 // Also detects subcommand patterns that could bypass allowlist checks.
@@ -56,6 +74,10 @@ func ParseCommands(command string) []string {
 			return []string{"__subcommand_blocked__"}
 		}
 	}
+
+	// Strip fd redirections ("cmd 2>&1 | head") before splitting — otherwise
+	// the "&" inside "2>&1" yields bogus segments like "1" that fail allowlists.
+	command = fdRedirectRe.ReplaceAllString(command, " ")
 
 	// Split on shell operators
 	var cmds []string
