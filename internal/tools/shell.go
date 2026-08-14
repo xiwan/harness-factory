@@ -79,11 +79,41 @@ func ParseCommands(command string) []string {
 	// the "&" inside "2>&1" yields bogus segments like "1" that fail allowlists.
 	command = fdRedirectRe.ReplaceAllString(command, " ")
 
-	// Split on shell operators
+	// Split on shell operators, but only outside quotes — a quoted ';', '|' or
+	// '&' is argument data, not a separator (e.g. --content-type
+	// "text/markdown; charset=utf-8"), and splitting there rejects legitimate
+	// allowlisted commands.
+	var segs []string
+	var cur strings.Builder
+	var quote rune
+	escaped := false
+	for _, r := range command {
+		switch {
+		case escaped:
+			escaped = false
+			cur.WriteRune(r)
+		case r == '\\' && quote != '\'':
+			escaped = true
+			cur.WriteRune(r)
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+			cur.WriteRune(r)
+		case r == '\'' || r == '"':
+			quote = r
+			cur.WriteRune(r)
+		case r == '&' || r == '|' || r == ';':
+			segs = append(segs, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	segs = append(segs, cur.String())
+
 	var cmds []string
-	for _, seg := range strings.FieldsFunc(command, func(r rune) bool {
-		return r == '&' || r == '|' || r == ';'
-	}) {
+	for _, seg := range segs {
 		seg = strings.TrimSpace(seg)
 		if seg == "" {
 			continue

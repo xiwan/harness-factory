@@ -89,7 +89,8 @@ driver 给出规则分,但 `ui_quality` 恒为空 —— 你必须 fs_read 几�
 结合 trace 中的状态流转给出 ui_quality 判断(截图本身你看不到,基于状态与 console 证据推断,
 并在报告中注明该维度证据形式)。评分口径与 caps 规则见 references/scoring.md。
 
-最终用 artifact_write 输出 `qa-report.md`,结构:
+最终用 artifact_write 输出 `qa-report.md`。报告若写测试日期,先用 `date +%F` 取
+真实日期(允许的 shell 命令),禁止凭训练记忆编造。结构:
 
 1. **结论一句话**(能否通关 + 总分 + 可信度)
 2. **测试概况**(capability 等级、轮次、每轮结局)

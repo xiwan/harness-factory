@@ -3,7 +3,7 @@ tools:
   fs:
     permissions: [read, write, list, search]
   shell:
-    allowlist: [node, npm, npx, bash, sh, ls, cat, grep, find, mkdir, unzip, curl, ps, kill]
+    allowlist: [node, npm, npx, bash, sh, ls, cat, grep, find, mkdir, unzip, curl, ps, kill, date]
   web:
     permissions: [fetch]
   artifact:

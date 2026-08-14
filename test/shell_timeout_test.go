@@ -46,6 +46,11 @@ func TestParseCommandsFdRedirection(t *testing.T) {
 		"echo hi 2>&1; cat f":              {"echo", "cat"},
 		"ls && cat f 2>/dev/null":          {"ls", "cat"},
 		"echo `whoami` 2>&1":               {"__subcommand_blocked__"}, // strip must not weaken subcommand guard
+		// Quoted separators are argument data, not command boundaries.
+		`aws s3 cp a.md s3://b/a.md --content-type "text/markdown; charset=utf-8"`: {"aws"},
+		`echo 'a|b;c' && cat f`:  {"echo", "cat"},
+		`grep "x|y" f | head -1`: {"grep", "head"},
+		`echo "unterminated; ls`: {"echo"}, // unterminated quote swallows the rest — never yields a hidden command
 	}
 	for cmd, want := range cases {
 		got := tools.ParseCommands(cmd)
