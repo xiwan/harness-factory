@@ -51,16 +51,29 @@ function parseArgs(argv) {
 function out(obj) { process.stdout.write(JSON.stringify(obj, null, 2) + "\n"); }
 function fail(msg) { out({ error: msg }); process.exit(1); }
 
-async function launch(url) {
+async function launch(url, videoDir) {
   const { chromium } = require("playwright");
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const viewport = { width: 960, height: 540 };
+  const opts = videoDir
+    ? { viewport, recordVideo: { dir: videoDir, size: viewport } }
+    : { viewport };
+  const context = await browser.newContext(opts);
+  const page = await context.newPage();
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(String(e).slice(0, 300)));
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 300)); });
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForTimeout(1500);
-  return { browser, page, consoleErrors };
+  return { browser, context, page, consoleErrors };
+}
+
+// Video is only flushed to disk when the context closes; call before browser.close().
+async function closeAndCollectVideo(context, page) {
+  const video = page.video();
+  await context.close();
+  if (!video) return null;
+  try { return await video.path(); } catch { return null; }
 }
 
 async function probeAPI(page) {
@@ -119,7 +132,7 @@ async function cmdPlay(args) {
   const outDir = args.out || "qa-evidence";
   mkdirSync(outDir, { recursive: true });
 
-  const { browser, page, consoleErrors } = await launch(args.url);
+  const { browser, context, page, consoleErrors } = await launch(args.url, outDir);
   const trace = [];
   const screenshots = [];
   let verdict = { done: false, success: false, failed: false, reason: "max_steps_or_timeout" };
@@ -188,12 +201,15 @@ async function cmdPlay(args) {
     await page.screenshot({ path: join(outDir, name) });
     screenshots.push(name);
 
+    // Close context first: Playwright only flushes the video file on context close.
+    const videoPath = await closeAndCollectVideo(context, page);
+
     const result = {
       url: args.url, game_type: type, capability: apiMode ? probe.capability : "black_box",
       steps: trace.length, elapsed_s: Math.round((Date.now() - t0) / 100) / 10,
       verdict, stagnant_streak_max: Math.max(0, ...trace.map((t) => t.stagnant)),
       console_errors: consoleErrors, screenshots: screenshots.map((s) => join(outDir, s)),
-      trace_tail: trace.slice(-15),
+      video: videoPath, trace_tail: trace.slice(-15),
     };
     const traceFile = join(outDir, "trace.json");
     writeFileSync(traceFile, JSON.stringify({ ...result, trace }, null, 2));

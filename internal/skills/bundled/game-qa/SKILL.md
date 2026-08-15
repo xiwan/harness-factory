@@ -64,6 +64,9 @@ node skills/game-qa/scripts/qa-driver.mjs play --url <URL> --type <TYPE> --durat
 
 TYPE ∈ survivor_like | arcade_shooter | platformer | puzzle_card | visual_novel(判型标准见 references/game-profiles.md)。
 
+每轮 play 会自动录像(webm,落在 --out 目录,结果 JSON 的 `video` 字段给出路径)。
+录像和截图都不要读进上下文 —— 它们随 Step 4 的 zip 整体交付。
+
 参数换算:driver 每步约 0.3 秒游戏时间,`--max-steps` 至少设为目标秒数 × 4
 (如生存 45 秒 → `--duration 55 --max-steps 200`),否则会在达标前耗尽步数,
 把"步数不足"误判成"游戏无法通关"。若某轮以 max_steps_or_timeout 结束且
@@ -95,8 +98,22 @@ driver 给出规则分,但 `ui_quality` 恒为空 —— 你必须 fs_read 几�
 1. **结论一句话**(能否通关 + 总分 + 可信度)
 2. **测试概况**(capability 等级、轮次、每轮结局)
 3. **五维评分表**(缺证据的维度写 N/A,不猜分)
-4. **问题卡片**(每个问题:现象 → 证据[trace 步骤号+截图文件] → 建议修改 → 如何验证)
-5. **接入建议**(black_box/limited 时附 API 接入模板指引)
+4. **问题卡片**(每个问题:现象 → 证据[trace 步骤号+截图文件+录像] → 建议修改 → 如何验证)
+5. **证据清单**(zip 内的截图/录像/trace 文件索引,注明各对应哪一轮)
+6. **接入建议**(black_box/limited 时附 API 接入模板指引)
+
+## Step 4: 打包全量证据(最后一步,不可省略)
+
+试玩证据(截图、录像 webm、trace.json)都在 `qa-evidence/` 下,必须整体交付:
+
+1. 用 fs_write 把 `qa-report.md` 也写一份到 `qa-evidence/qa-report.md`
+   (让 zip 自含报告,报告里的相对路径引用在解压后直接可用)。
+2. 调 artifact 工具的 `pack` 操作打包整个目录:
+   `name` = `qa-evidence-<日期 date +%F>.zip`,`path` = `qa-evidence`。
+   文件内容由 harness 直接压缩,不经过对话,截图和录像不需要也不允许读进上下文。
+3. `qa-report.md` 仍然单独 artifact_write 一份(纯文本,方便快速阅读)。
+
+最终交付 = outputs/ 下两件:`qa-report.md`(速读)+ `qa-evidence-<date>.zip`(全量证据)。
 
 ## 原则
 

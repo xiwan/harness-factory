@@ -1,8 +1,11 @@
 package tools
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +20,10 @@ import (
 // - `O_NOFOLLOW` blocks symlink escape; mode 0600 limits cross-UID leakage.
 // - Per-file size and per-process file-count caps bound DoS.
 //
+// The `pack` op zips a directory from inside cwd into `outputs/` so binary
+// evidence (screenshots, videos) reaches downstream without transiting the
+// LLM context. The dir must resolve inside cwd; symlinks are never followed.
+//
 // Lifecycle of `outputs/` is the caller's (bridge's) responsibility.
 type ArtifactTool struct {
 	count int64 // atomic counter of successful writes this process
@@ -26,7 +33,8 @@ func NewArtifactTool() *ArtifactTool { return &ArtifactTool{} }
 
 const (
 	artifactDir      = "outputs"
-	artifactMaxSize  = 1 << 20 // 1 MiB
+	artifactMaxSize  = 1 << 20   // 1 MiB per text artifact
+	artifactPackMax  = 100 << 20 // 100 MiB uncompressed total per pack
 	artifactMaxFiles = 100
 	artifactFileMode = 0600
 )
@@ -51,6 +59,10 @@ func (*ArtifactTool) Operations() []Operation {
 			{Name: "name", Type: "string", Description: "Filename only", Required: true},
 		}},
 		{Name: "list", Description: "List artifacts written so far.", Parameters: []ParamDef{}},
+		{Name: "pack", Description: "Zip a directory from the working directory into outputs/ as a single .zip deliverable. Use for binary evidence (screenshots, videos, traces) — file contents never pass through the conversation. Max 100MB uncompressed.", Parameters: []ParamDef{
+			{Name: "name", Type: "string", Description: "Output zip filename (must end in .zip). Allowed chars: letters, digits, dot, underscore, dash.", Required: true},
+			{Name: "path", Type: "string", Description: "Directory to pack, relative to the working directory (e.g. \"qa-evidence\").", Required: true},
+		}},
 	}
 }
 
@@ -58,6 +70,7 @@ func (a *ArtifactTool) Execute(op string, params json.RawMessage, cwd string) (s
 	var p struct {
 		Name    string `json:"name"`
 		Content string `json:"content"`
+		Path    string `json:"path"`
 	}
 	_ = json.Unmarshal(params, &p)
 
@@ -117,14 +130,130 @@ func (a *ArtifactTool) Execute(op string, params json.RawMessage, cwd string) (s
 		atomic.AddInt64(&a.count, 1)
 		return fmt.Sprintf("written %d bytes to outputs/%s", len(p.Content), p.Name), nil
 
+	case "pack":
+		if strings.ToLower(filepath.Ext(p.Name)) != ".zip" {
+			return "", fmt.Errorf("artifact: pack name must end in .zip, got %q", p.Name)
+		}
+		if atomic.LoadInt64(&a.count) >= artifactMaxFiles {
+			return "", fmt.Errorf("artifact: file count cap %d reached for this session", artifactMaxFiles)
+		}
+		abs, err := artifactResolveName(outDir, p.Name)
+		if err != nil {
+			return "", err
+		}
+		src, err := artifactResolvePackDir(cwd, p.Path)
+		if err != nil {
+			return "", err
+		}
+		if err := os.MkdirAll(outDir, 0700); err != nil {
+			return "", err
+		}
+		total, files, err := artifactPack(src, abs)
+		if err != nil {
+			os.Remove(abs)
+			return "", err
+		}
+		atomic.AddInt64(&a.count, 1)
+		return fmt.Sprintf("packed %d files (%d bytes uncompressed) into outputs/%s", files, total, p.Name), nil
+
 	default:
 		return "", fmt.Errorf("artifact: unknown op %s", op)
 	}
 }
 
-// artifactResolve validates the filename and returns the absolute path under outDir.
-// Rejects path components, absolute paths, traversal, bad charset, and disallowed extensions.
+// artifactResolvePackDir validates that the pack source is a directory that
+// resolves (through any symlinks) to a location inside cwd.
+func artifactResolvePackDir(cwd, rel string) (string, error) {
+	if rel == "" {
+		return "", fmt.Errorf("artifact: pack path required")
+	}
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("artifact: pack path must be relative to the working directory")
+	}
+	src, err := filepath.EvalSymlinks(filepath.Join(cwd, rel))
+	if err != nil {
+		return "", fmt.Errorf("artifact: pack path: %w", err)
+	}
+	realCwd, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return "", err
+	}
+	if src != realCwd && !strings.HasPrefix(src, realCwd+string(filepath.Separator)) {
+		return "", fmt.Errorf("artifact: pack path escapes working directory")
+	}
+	info, err := os.Stat(src)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("artifact: pack path must be an existing directory")
+	}
+	return src, nil
+}
+
+// artifactPack zips every regular file under src into dst. Symlinks (file or
+// dir) are skipped, never followed. Uncompressed total is capped.
+func artifactPack(src, dst string) (total int64, files int, err error) {
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, artifactFileMode)
+	if err != nil {
+		return 0, 0, fmt.Errorf("artifact: open: %w", err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	err = filepath.WalkDir(src, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil || d.IsDir() {
+			return nil // best-effort, matching loader behavior
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		fi, ferr := d.Info()
+		if ferr != nil || !fi.Mode().IsRegular() {
+			return nil
+		}
+		if total+fi.Size() > artifactPackMax {
+			return fmt.Errorf("artifact: pack exceeds %d MiB uncompressed cap", artifactPackMax>>20)
+		}
+		rel, rerr := filepath.Rel(src, p)
+		if rerr != nil {
+			return nil
+		}
+		w, zerr := zw.Create(filepath.ToSlash(rel))
+		if zerr != nil {
+			return zerr
+		}
+		in, oerr := os.Open(p)
+		if oerr != nil {
+			return nil
+		}
+		defer in.Close()
+		n, cerr := io.Copy(w, in)
+		total += n
+		files++
+		return cerr
+	})
+	if err != nil {
+		zw.Close()
+		return 0, 0, err
+	}
+	return total, files, zw.Close()
+}
+
+// artifactResolve validates a text-artifact filename (write/read): name checks
+// plus the data-only extension whitelist.
 func artifactResolve(outDir, name string) (string, error) {
+	abs, err := artifactResolveName(outDir, name)
+	if err != nil {
+		return "", err
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	if !artifactAllowed[ext] {
+		return "", fmt.Errorf("artifact: extension %q not in allowlist", ext)
+	}
+	return abs, nil
+}
+
+// artifactResolveName validates the filename shape and returns the absolute
+// path under outDir. Rejects path components, absolute paths, traversal, and
+// bad charset. Extension policy is the caller's (write: text whitelist; pack: .zip).
+func artifactResolveName(outDir, name string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("artifact: name required")
 	}
@@ -136,10 +265,6 @@ func artifactResolve(outDir, name string) (string, error) {
 	}
 	if !artifactNameRe.MatchString(name) {
 		return "", fmt.Errorf("artifact: name %q contains disallowed characters", name)
-	}
-	ext := strings.ToLower(filepath.Ext(name))
-	if !artifactAllowed[ext] {
-		return "", fmt.Errorf("artifact: extension %q not in allowlist", ext)
 	}
 	abs := filepath.Clean(filepath.Join(outDir, name))
 	cleanDir := filepath.Clean(outDir)

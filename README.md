@@ -42,7 +42,7 @@ harness-factory (single binary, ~6MB)
     ├── git      — status, diff, log, show, commit, push
     ├── shell    — exec (allowlist/blocklist)
     ├── web      — fetch
-    └── artifact — write, read, list (sandboxed `outputs/` for inter-agent exchange)
+    └── artifact — write, read, list, pack (sandboxed `outputs/` for inter-agent exchange)
 ```
 
 Same binary, different profiles → different agents (code reviewer, devops bot, research assistant).
@@ -81,6 +81,8 @@ Profiles without `fs.write` can still produce output for the next agent in a pip
 | Per file | ≤ 1 MiB |
 | Per process | ≤ 100 files |
 | On disk | `O_NOFOLLOW` (blocks symlink escape), mode `0600` |
+
+**`pack` op (binary evidence delivery).** `artifact pack {name, path}` zips a directory from inside the working directory into `outputs/<name>.zip` — file contents are streamed by the harness and never transit the LLM context, so screenshots/videos/traces reach downstream (e.g. a bridge uploading to CDN) without token cost. Guards: `name` must end in `.zip` (same charset rules); `path` must be relative and resolve — through any symlinks — inside `cwd`; symlinks encountered during the walk are skipped, never followed; ≤ 100 MiB uncompressed per pack; counts toward the 100-file session cap. The `write` op keeps its text-only whitelist.
 
 Lifecycle of `outputs/` is the **caller's** responsibility — harness-factory never cleans it up. Bridges running a pipeline should either point each session at a shared `cwd` to stitch stages together, or tear down per-session scratch directories themselves.
 
