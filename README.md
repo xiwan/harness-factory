@@ -316,6 +316,57 @@ Features:
 Profile-specific runtime dependencies (not needed for the binary itself):
 
 - `qa` profile: Node.js ≥ 18 on the target machine. The bundled `game-qa` skill detects missing deps (`check-env.sh`) and installs playwright + chromium (`setup.sh`) only after informing the user. Set `HF_SHELL_TIMEOUT` (e.g. `300s`) for long playtest sessions; shell commands default to a 60s kill timeout.
+- `aws-s3` skill: `aws` CLI and `jq` on PATH, plus usable AWS credentials (instance role or environment). Only profiles whose shell allowlist includes `aws` can use it — currently `operator` and `admin`.
+
+## Bundled Skills
+
+Skills are compiled into the binary and written to the skills directory on first
+run. A directory that already exists on disk is left alone, so an external skill
+always wins over the bundled copy of the same name.
+
+| Skill | Purpose |
+|-------|---------|
+| `aws-s3` | Distribute skills via S3, upload artifacts, generate presigned URLs |
+| `game-qa` | Automated web-game playtesting with evidence collection and scoring |
+| `game-design-coach` | Turns a one-line game idea into a detailed generation prompt |
+| `skill-creator` | How to author new skills for this agent |
+| `skill-security-audit` | Scans skills for leaked credentials, dangerous commands, and exfiltration |
+
+### Distributing skills through S3
+
+`aws-s3` lets one agent publish a skill and others pick it up, without rebuilding
+the binary:
+
+```bash
+S=$(find / -name s3-skill.sh -path '*aws-s3*' 2>/dev/null | head -1)
+
+bash "$S" config s3://my-bucket/skills   # or set HF_SKILLS_S3_URI
+bash "$S" list                           # what the bucket offers
+bash "$S" pull                           # fetch and install
+bash "$S" push ./my-skill                # publish
+```
+
+A bucket that feeds skills into an agent controls text that lands in its system
+prompt, so it is a trust boundary — keep it private and restrict who can write.
+Every pulled skill must clear these checks before it is installed:
+
+- the name is not one of the bundled skills, so the audit gate and the sync
+  script itself cannot be shadowed
+- an existing skill is only replaced if this script installed it (tracked in
+  `<skills_dir>/.s3-managed`); hand-written skills are never overwritten
+- the layout is limited to `SKILL.md`, `scripts/*`, and `references/*`
+- the frontmatter `name` matches the directory name, since the loader keys on
+  frontmatter
+- size caps: 64 KiB per file, 100 files, 10 MiB total
+- `skill-security-audit` reports no CRITICAL findings
+
+Downloads never arrive executable; running a remote script requires an explicit
+`bash <path>`, which keeps it subject to the profile's shell allowlist. Staging
+happens outside the skills directory so an interrupted sync cannot leave
+unaudited content where the loader would pick it up.
+
+A newly installed skill is visible to the **next** session: the loader rescans
+every 60 seconds, but a session's system prompt is assembled when it starts.
 
 ## Changelog
 

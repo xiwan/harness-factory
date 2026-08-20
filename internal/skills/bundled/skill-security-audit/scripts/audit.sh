@@ -20,7 +20,12 @@ LOW=0
 
 # Output format
 JSON_OUTPUT=false
-FINDINGS=()
+
+# Findings are appended to a temp file rather than a shell array: add_finding runs
+# inside `grep | while` pipelines, whose subshell would discard any variable
+# mutation. Counting happens at summary time by reading this file back.
+FINDINGS_FILE=$(mktemp "${TMPDIR:-/tmp}/skill-audit.XXXXXX")
+trap 'rm -f "$FINDINGS_FILE"' EXIT
 
 usage() {
     echo "Usage: $0 <skill-path> [--json] [--include-docs]"
@@ -43,8 +48,8 @@ INCLUDE_DOCS=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --json) JSON_OUTPUT=true shift ;;
-        --include-docs) INCLUDE_DOCS=true shift ;;
+        --json) JSON_OUTPUT=true; shift ;;
+        --include-docs) INCLUDE_DOCS=true; shift ;;
         *) usage ;;
     esac
 done
@@ -144,16 +149,13 @@ add_finding() {
     local line="$4"
     local message="$5"
 
-    case $severity in
-        CRITICAL) ((CRITICAL++)) || true ;;
-        HIGH)     ((HIGH++)) || true ;;
-        MEDIUM)   ((MEDIUM++)) || true ;;
-        LOW)      ((LOW++)) || true ;;
-    esac
+    # Persist to file, not to shell vars: this function is invoked from inside
+    # `grep | while` pipelines running in a subshell, so counter increments and
+    # array appends would be lost when the subshell exits.
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$severity" "$category" "$file" "$line" "$message" >> "$FINDINGS_FILE"
 
-    if $JSON_OUTPUT; then
-        FINDINGS+=("{\"severity\":\"$severity\",\"category\":\"$category\",\"file\":\"$file\",\"line\":$line,\"message\":\"$message\"}")
-    else
+    if ! $JSON_OUTPUT; then
         local color
         case $severity in
             CRITICAL) color=$RED ;;
@@ -233,6 +235,15 @@ scan_credentials() {
     grep -nE 'AKIA[0-9A-Z]{16}' "$file" 2>/dev/null | while IFS=: read -r line_num content; do
         should_skip_finding "$file" "$line_num" "$skill_path" && continue
         add_finding "CRITICAL" "Credential" "$file" "$line_num" "AWS Access Key detected"
+    done || true
+
+    # AWS Secret Access Key — 40-char base64-ish value assigned to a
+    # secret_access_key-style name. The AKIA rule above only catches the key *ID*,
+    # so a leaked secret would otherwise pass unnoticed.
+    grep -nEi '(aws_)?secret_access_key["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+=]{40}' "$file" 2>/dev/null | while IFS=: read -r line_num content; do
+        should_skip_finding "$file" "$line_num" "$skill_path" && continue
+        [[ "$content" =~ (your[-_]|xxx|example|placeholder|env|getenv|process\.|os\.environ) ]] && continue
+        add_finding "CRITICAL" "Credential" "$file" "$line_num" "AWS Secret Access Key detected"
     done || true
 
     # GitHub Token
@@ -427,6 +438,15 @@ for skill in "${SKILLS[@]}"; do
     fi
 done
 
+# Tally findings from the file written by add_finding (see comment there: the
+# pipeline subshells cannot mutate these counters directly).
+if [[ -s "$FINDINGS_FILE" ]]; then
+    CRITICAL=$(awk -F'\t' '$1=="CRITICAL"' "$FINDINGS_FILE" | wc -l)
+    HIGH=$(awk -F'\t' '$1=="HIGH"' "$FINDINGS_FILE" | wc -l)
+    MEDIUM=$(awk -F'\t' '$1=="MEDIUM"' "$FINDINGS_FILE" | wc -l)
+    LOW=$(awk -F'\t' '$1=="LOW"' "$FINDINGS_FILE" | wc -l)
+fi
+
 # Output summary
 if $JSON_OUTPUT; then
     echo "{"
@@ -437,15 +457,15 @@ if $JSON_OUTPUT; then
     echo "    \"low\": $LOW"
     echo "  },"
     echo "  \"findings\": ["
-    first=true
-    for finding in "${FINDINGS[@]}"; do
-        if $first; then
-            echo "    $finding"
-            first=false
-        else
-            echo "    ,$finding"
-        fi
-    done
+    awk -F'\t' '
+        function esc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
+        NR > 1 { printf ",\n" }
+        {
+            printf "    {\"severity\":\"%s\",\"category\":\"%s\",\"file\":\"%s\",\"line\":%s,\"message\":\"%s\"}",
+                   esc($1), esc($2), esc($3), ($4 == "" ? 0 : $4), esc($5)
+        }
+        END { if (NR > 0) printf "\n" }
+    ' "$FINDINGS_FILE"
     echo "  ]"
     echo "}"
 else
@@ -479,3 +499,12 @@ else
         echo -e "${GRAY}(Documentation files skipped. Use --include-docs to scan them too)${NC}"
     fi
 fi
+
+# Exit code lets callers gate without parsing output:
+#   0 = clean, 1 = usage/target error (raised earlier), 2 = CRITICAL, 3 = HIGH only
+if [[ $CRITICAL -gt 0 ]]; then
+    exit 2
+elif [[ $HIGH -gt 0 ]]; then
+    exit 3
+fi
+exit 0

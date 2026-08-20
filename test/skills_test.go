@@ -16,10 +16,15 @@ func TestMaterializeBundledSkills(t *testing.T) {
 	for _, n := range l.Names() {
 		names[n] = true
 	}
-	for _, want := range []string{"game-qa", "skill-security-audit", "aidlc"} {
+	for _, want := range []string{"game-qa", "skill-security-audit", "aws-s3"} {
 		if !names[want] {
 			t.Errorf("bundled skill %q not loaded", want)
 		}
+	}
+	// aidlc was removed in v0.12.0 — it lives in the external skills repo now,
+	// where it is maintained at a newer version than the copy we used to bundle.
+	if names["aidlc"] {
+		t.Error("aidlc should no longer be bundled")
 	}
 
 	// Scripts and references must land on disk so the LLM can fs_read / exec them.
@@ -32,6 +37,8 @@ func TestMaterializeBundledSkills(t *testing.T) {
 		"game-qa/references/game-profiles.md",
 		"game-qa/references/scoring.md",
 		"skill-security-audit/scripts/audit.sh",
+		"aws-s3/SKILL.md",
+		"aws-s3/scripts/s3-skill.sh",
 	}
 	for _, f := range files {
 		info, err := os.Stat(filepath.Join(dir, f))
